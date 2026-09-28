@@ -155,7 +155,7 @@
         <div class="cfg-col">
           <label>Local / Célula / Posto — <code>palavra-chave => Nome do Local</code></label>
           <textarea id="cfgLocais" placeholder="unidade1 => Unidade 1&#10;subestacao => Subestação&#10;linha3 => Linha 3"></textarea>
-          <div class="hint">Se a mensagem tiver um código de célula (ex: <b>WR019</b>, <b>WR 037</b>), ele é detectado automaticamente e usado como Local, sem precisar cadastrar regra — essas palavras-chave só valem como reforço/alternativa quando não houver código WR na mensagem.</div>
+          <div class="hint">Se a mensagem tiver um código de célula (ex: <b>WR019</b>, <b>WR 037</b>), ele é detectado automaticamente e usado como Local, sem precisar cadastrar regra — essas palavras-chave só valem como reforço/alternativa quando não houver código WR na mensagem. <b>Só entram no indicador as mensagens em que algum posto/célula foi identificado</b> — o resto é ignorado.</div>
         </div>
         <div class="cfg-col">
           <label>Severidade — <code>palavra-chave => Nível</code></label>
@@ -165,11 +165,6 @@
           <label>Palavras que indicam "Resolvido" (uma por linha)</label>
           <textarea id="cfgResolvidos" style="height:80px"></textarea>
           <div class="hint">Sem essas palavras, a intervenção entra como "Aberto" (editável depois).</div>
-        </div>
-        <div class="cfg-col">
-          <label>Gatilhos de intervenção (uma palavra por linha)</label>
-          <textarea id="cfgGatilhos" style="height:80px"></textarea>
-          <div class="hint">Mensagens com foto/vídeo, ou contendo essas palavras/palavras-chave, já vêm marcadas para incluir.</div>
         </div>
         <div class="cfg-col">
           <label>Ações</label>
@@ -309,12 +304,6 @@
     "normalizado", "normalizada", "regularizado", "regularizada"
   ].join("\n");
 
-  var DEFAULT_GATILHOS = [
-    "intervenção", "intervencao", "ajuste", "ajustei", "corrigi", "correção",
-    "correcao", "resolvi", "implementei", "alterei", "revisei", "aprovei",
-    "falha", "defeito", "quebrou", "vazamento", "reparo"
-  ].join("\n");
-
   var LS_KEY = "wa_interv_cfg_v2";
   var LS_KEY_V1 = "wa_interv_cfg_v1";
 
@@ -335,7 +324,6 @@
     return {
       processos: (migrated && migrated.processos) || DEFAULT_PROCESSOS,
       atividades: (migrated && migrated.atividades) || DEFAULT_ATIVIDADES,
-      gatilhos: (migrated && migrated.gatilhos) || DEFAULT_GATILHOS,
       locais: "",
       severidades: DEFAULT_SEVERIDADES,
       resolvidos: DEFAULT_RESOLVIDOS,
@@ -369,7 +357,6 @@
   document.getElementById("cfgLocais").value = cfg.locais || "";
   document.getElementById("cfgSeveridades").value = cfg.severidades;
   document.getElementById("cfgResolvidos").value = cfg.resolvidos;
-  document.getElementById("cfgGatilhos").value = cfg.gatilhos;
   document.getElementById("cfgIncludeMedia").checked = cfg.includeMedia !== false;
 
   function readCfgFromForm(){
@@ -379,7 +366,6 @@
       locais: document.getElementById("cfgLocais").value,
       severidades: document.getElementById("cfgSeveridades").value,
       resolvidos: document.getElementById("cfgResolvidos").value,
-      gatilhos: document.getElementById("cfgGatilhos").value,
       includeMedia: document.getElementById("cfgIncludeMedia").checked
     };
   }
@@ -397,7 +383,6 @@
     document.getElementById("cfgLocais").value = "";
     document.getElementById("cfgSeveridades").value = DEFAULT_SEVERIDADES;
     document.getElementById("cfgResolvidos").value = DEFAULT_RESOLVIDOS;
-    document.getElementById("cfgGatilhos").value = DEFAULT_GATILHOS;
     document.getElementById("cfgIncludeMedia").checked = true;
   });
 
@@ -619,15 +604,6 @@
     return "Aberto";
   }
 
-  function isTriggered(hasMedia, text, gatilhos, procRules, atvRules){
-    if (hasMedia) return true;
-    var norm = normalize(text);
-    for (var i=0;i<gatilhos.length;i++) if (norm.indexOf(gatilhos[i]) !== -1) return true;
-    for (i=0;i<procRules.length;i++) if (norm.indexOf(procRules[i].kw) !== -1) return true;
-    for (i=0;i<atvRules.length;i++) if (norm.indexOf(atvRules[i].kw) !== -1) return true;
-    return false;
-  }
-
   // ---- State ----
   var rows = [];
   var pageSize = 100;
@@ -649,8 +625,6 @@
     var localRules = parseRules(cfg.locais);
     var severidadeRules = parseRules(cfg.severidades);
     var resolvidoWords = parseWords(cfg.resolvidos);
-    var gatilhos = parseWords(cfg.gatilhos);
-
     var mediaIndex = {};
     var getRawText;
 
@@ -712,7 +686,11 @@
         var local = (cellInfo && cellInfo.code) || classify(text, localRules);
         var sever = classify(text, severidadeRules);
         var status = classifyStatus(text, resolvedWordsOrDefault(resolvidoWords));
-        var included = isTriggered(!!mediaFilename, text, gatilhos, procRules, atvRules);
+        // Só entra no indicador quando o posto/célula foi identificado
+        // (via código WR ou palavra-chave de Local) — mensagem sem
+        // posto reconhecido (ex: bom dia, combinados gerais) é ignorada,
+        // mesmo que tenha mídia.
+        var included = !!local;
         return {
           id: i,
           date: msg.date, dateStr: msg.dateStr, time: msg.time,
