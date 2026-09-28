@@ -153,8 +153,9 @@
           <textarea id="cfgAtividades"></textarea>
         </div>
         <div class="cfg-col">
-          <label>Local / Unidade / Equipamento — <code>palavra-chave => Nome do Local</code></label>
+          <label>Local / Célula / Posto — <code>palavra-chave => Nome do Local</code></label>
           <textarea id="cfgLocais" placeholder="unidade1 => Unidade 1&#10;subestacao => Subestação&#10;linha3 => Linha 3"></textarea>
+          <div class="hint">Se a mensagem tiver um código de célula (ex: <b>WR019</b>, <b>WR 037</b>), ele é detectado automaticamente e usado como Local, sem precisar cadastrar regra — essas palavras-chave só valem como reforço/alternativa quando não houver código WR na mensagem.</div>
         </div>
         <div class="cfg-col">
           <label>Severidade — <code>palavra-chave => Nível</code></label>
@@ -210,7 +211,7 @@
         <th style="width:64px">Mídia</th>
         <th style="width:140px">Processo</th>
         <th style="width:140px">Atividade</th>
-        <th style="width:120px">Local</th>
+        <th style="width:120px">Local / Célula</th>
         <th style="width:100px">Severidade</th>
         <th style="width:100px">Status</th>
         <th>Mensagem</th>
@@ -548,6 +549,19 @@
     return null;
   }
 
+  // ---- Código da célula/posto (ex: "WR019", "WR 037", "Wr-037") ----
+  // Nas mensagens do grupo, cada intervenção começa com esse código —
+  // usamos ele como referência automática de qual posto solicitou a
+  // atuação, e tiramos ele do texto para sobrar só o problema descrito.
+  var CELL_CODE_RE = /\bWR[\s-]?(\d{2,4})\b/i;
+  function extractCellCode(text){
+    var m = CELL_CODE_RE.exec(text);
+    if (!m) return null;
+    var code = "WR" + m[1];
+    var rest = (text.slice(0, m.index) + " " + text.slice(m.index + m[0].length)).replace(/[ \t]+/g, " ").trim();
+    return { code: code, rest: rest };
+  }
+
   function mediaTypeFromExt(filename){
     var ext = (filename.split(".").pop() || "").toLowerCase();
     if (["jpg","jpeg","png","gif","webp","bmp"].indexOf(ext) !== -1) return "imagem";
@@ -690,10 +704,12 @@
           mediaZipEntry = mediaIndex[mediaFilename.toLowerCase()] || null;
           mediaMissing = !mediaZipEntry;
         }
+        var cellInfo = extractCellCode(text);
+        if (cellInfo) text = cellInfo.rest || text;
         var iw = isoWeek(msg.date);
         var proc = classify(text, procRules);
         var atv = classify(text, atvRules);
-        var local = classify(text, localRules);
+        var local = (cellInfo && cellInfo.code) || classify(text, localRules);
         var sever = classify(text, severidadeRules);
         var status = classifyStatus(text, resolvedWordsOrDefault(resolvidoWords));
         var included = isTriggered(!!mediaFilename, text, gatilhos, procRules, atvRules);
@@ -1059,7 +1075,7 @@
       "<h2>Intervenções por Processo</h2>" + buildBarChartSVG(d.byProcesso, {maxBars:8, width:760}) +
       "<h2>Intervenções por Técnico</h2>" + buildBarChartSVG(d.byAutor, {maxBars:8, width:760}) +
       "<h2>Detalhamento ("+d.total+" intervenções)</h2>" +
-      "<table><thead><tr><th>Data</th><th>Autor</th><th>Processo</th><th>Atividade</th><th>Local</th><th>Severidade</th><th>Status</th><th>Descrição</th></tr></thead><tbody>"+rowsHtml+"</tbody></table>";
+      "<table><thead><tr><th>Data</th><th>Autor</th><th>Processo</th><th>Atividade</th><th>Local / Célula</th><th>Severidade</th><th>Status</th><th>Descrição</th></tr></thead><tbody>"+rowsHtml+"</tbody></table>";
 
     setTimeout(function(){ window.print(); }, 50);
   });
@@ -1095,7 +1111,7 @@
     var outZip = new JSZip();
     var mediaFolder = outZip.folder("midias");
 
-    var headerCols = ["Data","Hora","Ano","Mês","Trimestre","Semana (ISO)","Autor","Processo","Atividade","Local/Unidade","Severidade","Status","Mídia","Descrição"];
+    var headerCols = ["Data","Hora","Ano","Mês","Trimestre","Semana (ISO)","Autor","Processo","Atividade","Local/Célula (WR)","Severidade","Status","Mídia","Descrição"];
     var mediaColIdx = headerCols.indexOf("Mídia");
     var aoa = [headerCols];
     var mediaCells = [];
