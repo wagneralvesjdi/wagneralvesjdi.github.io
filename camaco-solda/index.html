@@ -240,6 +240,10 @@
       <b>Android (Chrome):</b> toque em "Gerar relatório em PDF" → no topo, escolha "Salvar como PDF" → Salvar → compartilhe o PDF salvo (e-mail, Teams etc.).<br>
       <b>iPhone (Safari):</b> toque em "Gerar relatório em PDF" → na pré-visualização, toque no ícone de compartilhar → Salvar em Arquivos (ou compartilhar direto por e-mail).
     </p>
+    <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
+    <p class="hint">Enviar o pacote (.zip) direto para <b>walves@camaco.com.br</b>: no celular, abre o menu de compartilhar do Android com o arquivo já anexado — escolha o Gmail (use sua conta pessoal) e confira o destinatário antes de enviar.</p>
+    <button class="btn-secondary" id="btnEmailReport">Enviar por e-mail (walves@camaco.com.br)</button>
+    <span class="hint" id="emailProgress"></span>
   </div>
 </div>
 
@@ -274,6 +278,9 @@
   ].join("\n");
 
   var DEFAULT_ATIVIDADES = [
+    "arame => Arame",
+    "robo => Falha Robô",
+    "camera => Câmera",
     "triagem => Triagem",
     "analise => Análise",
     "aprovacao => Aprovação",
@@ -945,6 +952,7 @@
 
   function computeDashboardFrom(data){
     var byProcesso = countBy(data, function(r){return r.processo;}).sort(function(a,b){return b.value-a.value;});
+    var byAtividade = countBy(data, function(r){return r.atividade;}).sort(function(a,b){return b.value-a.value;});
     var byAutor = countBy(data, function(r){return r.author;}).sort(function(a,b){return b.value-a.value;});
     var byLocal = countBy(data, function(r){return r.local;}).sort(function(a,b){return b.value-a.value;});
     var bySemana = countBy(data, function(r){return r.semanaLabel;}).sort(function(a,b){return a.label < b.label ? -1 : 1;});
@@ -954,7 +962,7 @@
       resolvidas: resolvidas,
       abertas: data.length - resolvidas,
       pctResolvidas: data.length ? (resolvidas/data.length*100) : 0,
-      byProcesso: byProcesso, byAutor: byAutor, byLocal: byLocal, bySemana: bySemana
+      byProcesso: byProcesso, byAtividade: byAtividade, byAutor: byAutor, byLocal: byLocal, bySemana: bySemana
     };
   }
 
@@ -1005,10 +1013,16 @@
       var x = leftPad + i*(barW+gap);
       var barH = Math.max(2, Math.round((d.value/maxVal)*chartH));
       var y = topPad + (chartH-barH);
+      var pointY = topPad + chartH - (pct/100*chartH);
+      // Quando a linha de % acumulado passa perto do topo da barra, o
+      // número de quantidade colide com o ponto — nesses casos, sobe o
+      // número um pouco mais para não sobrepor.
+      var labelY = y - 6;
+      if (Math.abs(labelY - pointY) < 18) labelY = Math.min(labelY, pointY - 12);
       bars += '<rect x="'+x+'" y="'+y+'" width="'+barW+'" height="'+barH+'" rx="3" fill="'+COLOR_BAR+'"><title>'+escapeHtml(d.label)+': '+d.value+'</title></rect>'+
-        '<text x="'+(x+barW/2)+'" y="'+(y-6)+'" text-anchor="middle" font-size="11" fill="'+INK_PRIMARY+'" font-weight="600">'+d.value+'</text>';
+        '<text x="'+(x+barW/2)+'" y="'+labelY.toFixed(1)+'" text-anchor="middle" font-size="11" fill="'+INK_PRIMARY+'" font-weight="600">'+d.value+'</text>';
       labels += '<text x="0" y="0" text-anchor="end" font-size="10.5" fill="'+INK_MUTED+'" transform="translate('+(x+barW/2)+' '+(topPad+chartH+14)+') rotate(-40)">'+escapeHtml(truncate(d.label,16))+'</text>';
-      points.push({ x: x+barW/2, y: topPad + chartH - (pct/100*chartH), pct: pct, label: d.label });
+      points.push({ x: x+barW/2, y: pointY, pct: pct, label: d.label });
     });
 
     var linePath = points.map(function(p,i){ return (i===0?"M":"L")+p.x.toFixed(1)+" "+p.y.toFixed(1); }).join(" ");
@@ -1058,6 +1072,7 @@
       '</div>' +
       '<div class="charts" style="margin-top:18px">' +
         '<div class="chart-card" style="grid-column:1/-1"><h3>Pareto — Intervenções por Processo</h3>'+buildParetoChartSVG(d.byProcesso, {maxBars:10})+'</div>' +
+        '<div class="chart-card" style="grid-column:1/-1"><h3>Pareto — Motivos de Parada</h3>'+buildParetoChartSVG(d.byAtividade, {maxBars:10})+'</div>' +
         '<div class="chart-card"><h3>Intervenções por Posto/Célula</h3>'+buildBarChartSVG(d.byLocal, {maxBars:10})+'</div>' +
         '<div class="chart-card"><h3>Intervenções por Técnico</h3>'+buildBarChartSVG(d.byAutor, {maxBars:8})+'</div>' +
         '<div class="chart-card" style="grid-column:1/-1"><h3>Intervenções por Semana</h3>'+buildBarChartSVG(d.bySemana, {maxBars:20, width:1040})+'</div>' +
@@ -1110,6 +1125,7 @@
         "<div class=\"kpi\" style=\"min-width:220px\"><b style=\"font-size:13px\">"+escapeHtml(topLocalLabel)+"</b><span>Posto/célula mais afetado</span></div>" +
       "</div>" +
       "<h2>Pareto — Intervenções por Processo</h2>" + buildParetoChartSVG(d.byProcesso, {maxBars:10}) +
+      "<h2>Pareto — Motivos de Parada</h2>" + buildParetoChartSVG(d.byAtividade, {maxBars:10}) +
       "<h2>Intervenções por Posto/Célula</h2>" + buildBarChartSVG(d.byLocal, {maxBars:10, width:760}) +
       "<h2>Intervenções por Técnico</h2>" + buildBarChartSVG(d.byAutor, {maxBars:8, width:760}) +
       "<h2>Detalhamento ("+d.total+" intervenções)</h2>" +
@@ -1128,23 +1144,20 @@
 
   function fmtDate(d){ return ("0"+d.getDate()).slice(-2)+"/"+("0"+(d.getMonth()+1)).slice(-2)+"/"+d.getFullYear(); }
 
-  function runExport(){
+  function buildPackageBlob(progressEl){
     var data = rows.filter(function(r){ return r.included; });
     if (!data.length){
       alert("Nenhuma intervenção marcada para incluir. Ajuste os filtros/checkboxes antes de gerar o pacote.");
-      return Promise.resolve();
+      return Promise.resolve(null);
     }
     if (typeof XLSX === "undefined" || typeof JSZip === "undefined"){
       alert("As bibliotecas necessárias não carregaram (verifique sua conexão com a internet) — recarregue a página e tente novamente.");
-      return Promise.resolve();
+      return Promise.resolve(null);
     }
 
     data = data.slice().sort(function(a,b){ return a.date - b.date; });
 
     var includeMedia = document.getElementById("cfgIncludeMedia").checked;
-    var btn = document.getElementById("btnExport");
-    var progressEl = document.getElementById("exportProgress");
-    btn.disabled = true;
 
     var outZip = new JSZip();
     var mediaFolder = outZip.folder("midias");
@@ -1261,13 +1274,76 @@
       var fname = "pacote_indicadores_" + ts.getFullYear() +
         ("0"+(ts.getMonth()+1)).slice(-2) + ("0"+ts.getDate()).slice(-2) +
         "_" + ("0"+ts.getHours()).slice(-2) + ("0"+ts.getMinutes()).slice(-2) + ".zip";
-      var a = document.createElement("a");
-      var url = URL.createObjectURL(blob);
-      a.href = url; a.download = fname;
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      progressEl.textContent = "Pronto! Pacote gerado: " + fname;
-      btn.disabled = false;
+      return { blob: blob, fname: fname };
     });
+  }
+
+  function runExport(){
+    var btn = document.getElementById("btnExport");
+    var progressEl = document.getElementById("exportProgress");
+    btn.disabled = true;
+    return buildPackageBlob(progressEl).then(function(result){
+      btn.disabled = false;
+      if (!result) return;
+      var a = document.createElement("a");
+      var url = URL.createObjectURL(result.blob);
+      a.href = url; a.download = result.fname;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      progressEl.textContent = "Pronto! Pacote gerado: " + result.fname;
+    });
+  }
+
+  var TARGET_EMAIL = "walves@camaco.com.br";
+
+  document.getElementById("btnEmailReport").addEventListener("click", function(){
+    emailPackage().catch(function(e){
+      document.getElementById("emailProgress").textContent = "Erro ao preparar envio: " + e.message;
+      document.getElementById("btnEmailReport").disabled = false;
+    });
+  });
+
+  function emailPackage(){
+    var btn = document.getElementById("btnEmailReport");
+    var progressEl = document.getElementById("emailProgress");
+    btn.disabled = true;
+    return buildPackageBlob(progressEl).then(function(result){
+      btn.disabled = false;
+      if (!result) return;
+
+      var file;
+      try { file = new File([result.blob], result.fname, { type: "application/zip" }); } catch(e){ file = null; }
+
+      if (file && navigator.canShare && navigator.canShare({ files: [file] })){
+        progressEl.textContent = "Abrindo compartilhamento — escolha o Gmail e confirme o destinatário (" + TARGET_EMAIL + ").";
+        return navigator.share({
+          files: [file],
+          title: "Relatório de Intervenções — CAMACO SOLDA",
+          text: "Relatório de intervenções CAMACO SOLDA — encaminhar para " + TARGET_EMAIL
+        }).then(function(){
+          progressEl.textContent = "Compartilhado! Confira se o destinatário é " + TARGET_EMAIL + " antes de enviar.";
+        }).catch(function(err){
+          if (err && err.name === "AbortError"){ progressEl.textContent = ""; return; }
+          progressEl.textContent = "Não foi possível compartilhar automaticamente — baixando o pacote para anexar manualmente.";
+          return downloadAndOpenMailto(result);
+        });
+      }
+
+      return downloadAndOpenMailto(result);
+    });
+  }
+
+  function downloadAndOpenMailto(result){
+    var a = document.createElement("a");
+    var url = URL.createObjectURL(result.blob);
+    a.href = url; a.download = result.fname;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+
+    var subject = encodeURIComponent("Relatório de Intervenções — CAMACO SOLDA");
+    var body = encodeURIComponent("Segue relatório de intervenções.\n\nArquivo baixado: " + result.fname + " — anexe-o antes de enviar.");
+    window.location.href = "mailto:" + TARGET_EMAIL + "?subject=" + subject + "&body=" + body;
+
+    document.getElementById("emailProgress").textContent = "Pacote baixado (" + result.fname + ") e e-mail aberto — anexe o arquivo antes de enviar.";
+    return Promise.resolve();
   }
 
   function sheetFromJson(json){
