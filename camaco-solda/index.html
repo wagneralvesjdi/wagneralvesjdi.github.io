@@ -945,6 +945,7 @@
   function computeDashboardFrom(data){
     var byProcesso = countBy(data, function(r){return r.processo;}).sort(function(a,b){return b.value-a.value;});
     var byAutor = countBy(data, function(r){return r.author;}).sort(function(a,b){return b.value-a.value;});
+    var byLocal = countBy(data, function(r){return r.local;}).sort(function(a,b){return b.value-a.value;});
     var bySemana = countBy(data, function(r){return r.semanaLabel;}).sort(function(a,b){return a.label < b.label ? -1 : 1;});
     var resolvidas = data.filter(function(r){return r.status === "Resolvido";}).length;
     return {
@@ -952,7 +953,7 @@
       resolvidas: resolvidas,
       abertas: data.length - resolvidas,
       pctResolvidas: data.length ? (resolvidas/data.length*100) : 0,
-      byProcesso: byProcesso, byAutor: byAutor, bySemana: bySemana
+      byProcesso: byProcesso, byAutor: byAutor, byLocal: byLocal, bySemana: bySemana
     };
   }
 
@@ -989,6 +990,7 @@
     }
     var topProcessoLabel = d.byProcesso.length ? d.byProcesso[0].label + " (" + d.byProcesso[0].value + ")" : "—";
     var topAutorLabel = d.byAutor.length ? d.byAutor[0].label + " (" + d.byAutor[0].value + ")" : "—";
+    var topLocalLabel = d.byLocal.length ? d.byLocal[0].label + " (" + d.byLocal[0].value + ")" : "—";
 
     body.innerHTML =
       '<div class="kpis">' +
@@ -996,16 +998,19 @@
         '<div class="kpi"><b>'+d.pctResolvidas.toFixed(1)+'%</b><span>Resolvidas</span></div>' +
         '<div class="kpi"><b style="font-size:16px">'+escapeHtml(topProcessoLabel)+'</b><span>Processo mais recorrente</span></div>' +
         '<div class="kpi"><b style="font-size:16px">'+escapeHtml(topAutorLabel)+'</b><span>Técnico mais atuante</span></div>' +
+        '<div class="kpi"><b style="font-size:16px">'+escapeHtml(topLocalLabel)+'</b><span>Posto/célula mais afetado</span></div>' +
       '</div>' +
       '<div class="status-tiles">' +
         '<div class="status-tile"><span class="status-dot" style="background:'+COLOR_GOOD+'"></span>Resolvido: <b>'+d.resolvidas+'</b></div>' +
         '<div class="status-tile"><span class="status-dot" style="background:'+COLOR_WARN+'"></span>Aberto: <b>'+d.abertas+'</b></div>' +
       '</div>' +
       '<div class="charts" style="margin-top:18px">' +
+        '<div class="chart-card"><h3>Intervenções por Posto/Célula</h3>'+buildBarChartSVG(d.byLocal, {maxBars:10})+'</div>' +
         '<div class="chart-card"><h3>Intervenções por Processo</h3>'+buildBarChartSVG(d.byProcesso, {maxBars:8})+'</div>' +
         '<div class="chart-card"><h3>Intervenções por Técnico</h3>'+buildBarChartSVG(d.byAutor, {maxBars:8})+'</div>' +
         '<div class="chart-card" style="grid-column:1/-1"><h3>Intervenções por Semana</h3>'+buildBarChartSVG(d.bySemana, {maxBars:20, width:1040})+'</div>' +
-      '</div>';
+      '</div>' +
+      '<p class="hint" style="margin-top:12px">Para ver <b>qual foi o problema</b> em cada posto/célula (não só quantos), use a busca na tabela acima com o código (ex: "WR019") — a coluna Descrição mostra o problema relatado em cada intervenção daquele posto.</p>';
   }
 
   // ---- PDF report (browser print) ----
@@ -1022,6 +1027,7 @@
 
     var topProcessoLabel = d.byProcesso.length ? d.byProcesso[0].label + " (" + d.byProcesso[0].value + ")" : "—";
     var topAutorLabel = d.byAutor.length ? d.byAutor[0].label + " (" + d.byAutor[0].value + ")" : "—";
+    var topLocalLabel = d.byLocal.length ? d.byLocal[0].label + " (" + d.byLocal[0].value + ")" : "—";
     var minDate = data[0].date, maxDate = data[data.length-1].date;
 
     var rowsHtml = data.map(function(r){
@@ -1049,7 +1055,9 @@
       "<div class=\"kpis\">" +
         "<div class=\"kpi\" style=\"min-width:220px\"><b style=\"font-size:13px\">"+escapeHtml(topProcessoLabel)+"</b><span>Processo mais recorrente</span></div>" +
         "<div class=\"kpi\" style=\"min-width:220px\"><b style=\"font-size:13px\">"+escapeHtml(topAutorLabel)+"</b><span>Técnico mais atuante</span></div>" +
+        "<div class=\"kpi\" style=\"min-width:220px\"><b style=\"font-size:13px\">"+escapeHtml(topLocalLabel)+"</b><span>Posto/célula mais afetado</span></div>" +
       "</div>" +
+      "<h2>Intervenções por Posto/Célula</h2>" + buildBarChartSVG(d.byLocal, {maxBars:10, width:760}) +
       "<h2>Intervenções por Processo</h2>" + buildBarChartSVG(d.byProcesso, {maxBars:8, width:760}) +
       "<h2>Intervenções por Técnico</h2>" + buildBarChartSVG(d.byAutor, {maxBars:8, width:760}) +
       "<h2>Detalhamento ("+d.total+" intervenções)</h2>" +
