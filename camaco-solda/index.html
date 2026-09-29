@@ -173,9 +173,9 @@
           <div class="hint">Se a mensagem tiver um código de célula (ex: <b>WR019</b>, <b>WR 037</b>), ele é detectado automaticamente e usado como Local, sem precisar cadastrar regra — essas palavras-chave só valem como reforço/alternativa quando não houver código WR na mensagem. <b>Só entram no indicador as mensagens em que algum posto/célula foi identificado</b> — o resto é ignorado.</div>
         </div>
         <div class="cfg-col">
-          <label>Causa da Falha — <code>palavra-chave => Nome da Causa</code></label>
+          <label>Motivo do Chamado — <code>palavra-chave => Nome do Motivo</code></label>
           <textarea id="cfgCausas"></textarea>
-          <div class="hint">Motivo técnico da parada (ex: Arame enroscado, GAP, Difusor com trinca) — é o que alimenta o Pareto de causas. Vem com uma lista padrão baseada no seu plano de ação; ajuste como preferir.</div>
+          <div class="hint">O que foi relatado na mensagem (ex: Arame enroscado, GAP, Difusor com trinca) — alimenta o Pareto de motivos. Vem com uma lista padrão baseada no seu plano de ação, mas foi inferida só a partir dos nomes das causas da sua planilha — não vimos mensagens reais (o app não processa seus dados). Por isso é normal muita coisa cair em "A identificar" no começo: ajuste as palavras-chave aqui com os termos que vocês realmente usam no grupo, ou preencha a causa direto na tabela depois de identificá-la.</div>
         </div>
         <div class="cfg-col">
           <label>Severidade — <code>palavra-chave => Nível</code></label>
@@ -211,7 +211,7 @@
     <div class="toolbar">
       <div class="row">
         <label style="font-size:12.5px"><input type="checkbox" id="filterIncluded"> mostrar só incluídas</label>
-        <input type="text" class="search" id="searchBox" placeholder="Buscar por autor, processo, atividade, causa, local ou texto...">
+        <input type="text" class="search" id="searchBox" placeholder="Buscar por autor, processo, atividade, motivo, local ou texto...">
       </div>
       <div class="row">
         <button class="btn-secondary" id="btnIncludeAll">Incluir todas visíveis</button>
@@ -226,7 +226,7 @@
         <th style="width:64px">Mídia</th>
         <th style="width:140px">Processo</th>
         <th style="width:140px">Atividade</th>
-        <th style="width:160px">Causa da Falha</th>
+        <th style="width:160px">Motivo do Chamado</th>
         <th style="width:120px">Local / Célula</th>
         <th style="width:100px">Severidade</th>
         <th style="width:100px">Status</th>
@@ -260,8 +260,8 @@
         <select id="fltProcesso"><option value="">Todos</option></select>
       </div>
       <div class="filter-field">
-        <label>Causa</label>
-        <select id="fltCausa"><option value="">Todas</option></select>
+        <label>Motivo</label>
+        <select id="fltCausa"><option value="">Todos</option></select>
       </div>
       <div class="filter-field">
         <label>Posto/Célula</label>
@@ -284,7 +284,7 @@
     <button class="btn-primary" id="btnExport">Gerar e baixar pacote (.zip)</button>
     <span class="hint" id="exportProgress"></span>
     <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
-    <p class="hint">Prefere um relatório em <b>PDF</b> (mais leve, sem mídia, aceito por praticamente qualquer filtro de e-mail corporativo)? Gera um resumo com as intervenções incluídas, pronto para compartilhar direto do celular. Respeita os filtros do painel acima (ex: gere um PDF só do período ou da causa que estiver filtrando).</p>
+    <p class="hint">Prefere um relatório em <b>PDF</b> (mais leve, sem mídia, aceito por praticamente qualquer filtro de e-mail corporativo)? Gera um resumo com as intervenções incluídas, pronto para compartilhar direto do celular. Respeita os filtros do painel acima (ex: gere um PDF só do período ou do motivo que estiver filtrando).</p>
     <button class="btn-secondary" id="btnPrintReport">Gerar relatório em PDF</button>
     <p class="footer-note" id="printHint">
       <b>Android (Chrome):</b> toque em "Gerar relatório em PDF" → no topo, escolha "Salvar como PDF" → Salvar → compartilhe o PDF salvo (e-mail, Teams etc.).<br>
@@ -372,6 +372,12 @@
     "miolo => TP miolo danificado",
     "arame => Arame fora de posição"
   ].join("\n");
+
+  // O motivo do chamado vem direto da mensagem (o que a pessoa relatou);
+  // quando nenhuma palavra-chave bate, não é uma falha do sistema — é só
+  // que a causa raiz ainda não foi apurada. Por isso um rótulo neutro,
+  // "A identificar", em vez de "Não identificado".
+  var MOTIVO_PENDENTE = "A identificar";
 
   var DEFAULT_SEVERIDADES = [
     "critico => Crítica",
@@ -1212,10 +1218,10 @@
   var INK_PRIMARY = "#0b0b0b";
   var AXIS = "#c3c2b7";
 
-  function countBy(data, fn){
+  function countBy(data, fn, fallback){
     var m = {};
     data.forEach(function(r){
-      var k = fn(r) || "Não identificado";
+      var k = fn(r) || (fallback || "Não identificado");
       m[k] = (m[k]||0) + 1;
     });
     return Object.keys(m).map(function(k){ return { label: k, value: m[k] }; });
@@ -1224,7 +1230,7 @@
   function computeDashboardFrom(data){
     var byProcesso = countBy(data, function(r){return r.processo;}).sort(function(a,b){return b.value-a.value;});
     var byAtividade = countBy(data, function(r){return r.atividade;}).sort(function(a,b){return b.value-a.value;});
-    var byCausa = countBy(data, function(r){return r.causa;}).sort(function(a,b){return b.value-a.value;});
+    var byCausa = countBy(data, function(r){return r.causa;}, MOTIVO_PENDENTE).sort(function(a,b){return b.value-a.value;});
     var byAutor = countBy(data, function(r){return r.author;}).sort(function(a,b){return b.value-a.value;});
     var byLocal = countBy(data, function(r){return r.local;}).sort(function(a,b){return b.value-a.value;});
     var bySemana = countBy(data, function(r){return r.semanaLabel;}).sort(function(a,b){return a.label < b.label ? -1 : 1;});
@@ -1252,7 +1258,7 @@
       if (deDate && r.date < deDate) return false;
       if (ateDate && r.date > ateDate) return false;
       if (proc && (r.processo || "Não identificado") !== proc) return false;
-      if (causaSel && (r.causa || "Não identificado") !== causaSel) return false;
+      if (causaSel && (r.causa || MOTIVO_PENDENTE) !== causaSel) return false;
       if (localSel && (r.local || "Não identificado") !== localSel) return false;
       if (statusSel && r.status !== statusSel) return false;
       return true;
@@ -1274,13 +1280,13 @@
 
   function populateFilterOptions(){
     var included = rows.filter(function(r){ return r.included; });
-    var uniq = function(fn){
+    var uniq = function(fn, fallback){
       var set = {};
-      included.forEach(function(r){ set[fn(r) || "Não identificado"] = true; });
+      included.forEach(function(r){ set[fn(r) || (fallback || "Não identificado")] = true; });
       return Object.keys(set);
     };
     populateSelectOptions("fltProcesso", uniq(function(r){return r.processo;}), document.getElementById("fltProcesso").value);
-    populateSelectOptions("fltCausa", uniq(function(r){return r.causa;}), document.getElementById("fltCausa").value);
+    populateSelectOptions("fltCausa", uniq(function(r){return r.causa;}, MOTIVO_PENDENTE), document.getElementById("fltCausa").value);
     populateSelectOptions("fltLocal", uniq(function(r){return r.local;}), document.getElementById("fltLocal").value);
   }
 
@@ -1400,7 +1406,7 @@
         '<div class="kpi"><b>'+d.total+'</b><span>Intervenções incluídas</span></div>' +
         '<div class="kpi"><b>'+d.pctResolvidas.toFixed(1)+'%</b><span>Resolvidas</span></div>' +
         '<div class="kpi"><b style="font-size:16px">'+escapeHtml(topProcessoLabel)+'</b><span>Processo mais recorrente</span></div>' +
-        '<div class="kpi"><b style="font-size:16px">'+escapeHtml(topCausaLabel)+'</b><span>Causa mais recorrente</span></div>' +
+        '<div class="kpi"><b style="font-size:16px">'+escapeHtml(topCausaLabel)+'</b><span>Motivo mais recorrente</span></div>' +
         '<div class="kpi"><b style="font-size:16px">'+escapeHtml(topAutorLabel)+'</b><span>Técnico mais atuante</span></div>' +
         '<div class="kpi"><b style="font-size:16px">'+escapeHtml(topLocalLabel)+'</b><span>Posto/célula mais afetado</span></div>' +
       '</div>' +
@@ -1410,7 +1416,7 @@
       '</div>' +
       '<div class="charts" style="margin-top:18px">' +
         '<div class="chart-card" style="grid-column:1/-1"><h3>Pareto — Intervenções por Processo</h3>'+buildParetoChartSVG(d.byProcesso, {maxBars:10})+'</div>' +
-        '<div class="chart-card" style="grid-column:1/-1"><h3>Pareto — Causas de Falha</h3>'+buildParetoChartSVG(d.byCausa, {maxBars:10})+'</div>' +
+        '<div class="chart-card" style="grid-column:1/-1"><h3>Pareto — Motivos do Chamado</h3>'+buildParetoChartSVG(d.byCausa, {maxBars:10})+'</div>' +
         '<div class="chart-card"><h3>Intervenções por Posto/Célula</h3>'+buildBarChartSVG(d.byLocal, {maxBars:10})+'</div>' +
         '<div class="chart-card"><h3>Intervenções por Técnico</h3>'+buildBarChartSVG(d.byAutor, {maxBars:8})+'</div>' +
         '<div class="chart-card" style="grid-column:1/-1"><h3>Intervenções por Semana</h3>'+buildBarChartSVG(d.bySemana, {maxBars:20, width:1040})+'</div>' +
@@ -1442,7 +1448,7 @@
         "<td>"+escapeHtml(r.author)+"</td>" +
         "<td>"+escapeHtml(r.processo||"Não identificado")+"</td>" +
         "<td>"+escapeHtml(r.atividade||"Não identificado")+"</td>" +
-        "<td>"+escapeHtml(r.causa||"Não identificado")+"</td>" +
+        "<td>"+escapeHtml(r.causa||MOTIVO_PENDENTE)+"</td>" +
         "<td>"+escapeHtml(r.local||"Não identificado")+"</td>" +
         "<td>"+escapeHtml(r.severidade||"Não identificado")+"</td>" +
         "<td>"+r.status+"</td>" +
@@ -1461,16 +1467,16 @@
       "</div>" +
       "<div class=\"kpis\">" +
         "<div class=\"kpi\" style=\"min-width:220px\"><b style=\"font-size:13px\">"+escapeHtml(topProcessoLabel)+"</b><span>Processo mais recorrente</span></div>" +
-        "<div class=\"kpi\" style=\"min-width:220px\"><b style=\"font-size:13px\">"+escapeHtml(topCausaLabel)+"</b><span>Causa mais recorrente</span></div>" +
+        "<div class=\"kpi\" style=\"min-width:220px\"><b style=\"font-size:13px\">"+escapeHtml(topCausaLabel)+"</b><span>Motivo mais recorrente</span></div>" +
         "<div class=\"kpi\" style=\"min-width:220px\"><b style=\"font-size:13px\">"+escapeHtml(topAutorLabel)+"</b><span>Técnico mais atuante</span></div>" +
         "<div class=\"kpi\" style=\"min-width:220px\"><b style=\"font-size:13px\">"+escapeHtml(topLocalLabel)+"</b><span>Posto/célula mais afetado</span></div>" +
       "</div>" +
       "<h2>Pareto — Intervenções por Processo</h2>" + buildParetoChartSVG(d.byProcesso, {maxBars:10}) +
-      "<h2>Pareto — Causas de Falha</h2>" + buildParetoChartSVG(d.byCausa, {maxBars:10}) +
+      "<h2>Pareto — Motivos do Chamado</h2>" + buildParetoChartSVG(d.byCausa, {maxBars:10}) +
       "<h2>Intervenções por Posto/Célula</h2>" + buildBarChartSVG(d.byLocal, {maxBars:10, width:760}) +
       "<h2>Intervenções por Técnico</h2>" + buildBarChartSVG(d.byAutor, {maxBars:8, width:760}) +
       "<h2>Detalhamento ("+d.total+" intervenções)</h2>" +
-      "<table><thead><tr><th>Data</th><th>Autor</th><th>Processo</th><th>Atividade</th><th>Causa</th><th>Local / Célula</th><th>Severidade</th><th>Status</th><th>Descrição</th></tr></thead><tbody>"+rowsHtml+"</tbody></table>";
+      "<table><thead><tr><th>Data</th><th>Autor</th><th>Processo</th><th>Atividade</th><th>Motivo</th><th>Local / Célula</th><th>Severidade</th><th>Status</th><th>Descrição</th></tr></thead><tbody>"+rowsHtml+"</tbody></table>";
 
     setTimeout(function(){ window.print(); }, 50);
   });
@@ -1503,7 +1509,7 @@
     var outZip = new JSZip();
     var mediaFolder = outZip.folder("midias");
 
-    var headerCols = ["Data","Hora","Ano","Mês","Trimestre","Semana (ISO)","Autor","Processo","Atividade","Causa da Falha","Local/Célula (WR)","Severidade","Status","Mídia","Descrição"];
+    var headerCols = ["Data","Hora","Ano","Mês","Trimestre","Semana (ISO)","Autor","Processo","Atividade","Motivo do Chamado","Local/Célula (WR)","Severidade","Status","Mídia","Descrição"];
     var mediaColIdx = headerCols.indexOf("Mídia");
     var aoa = [headerCols];
     var mediaCells = [];
@@ -1537,7 +1543,7 @@
           aoa.push([
             fmtDate(r.date), r.time, r.ano, r.mes, "T"+Math.ceil(r.mesNum/3), r.semanaLabel,
             r.author, r.processo || "Não identificado", r.atividade || "Não identificado",
-            r.causa || "Não identificado", r.local || "Não identificado", r.severidade || "Não identificado", r.status,
+            r.causa || MOTIVO_PENDENTE, r.local || "Não identificado", r.severidade || "Não identificado", r.status,
             mediaLabel, r.text
           ]);
           if (mediaTarget){
@@ -1577,10 +1583,10 @@
         return keys.map(function(k){ var o = {}; o[label]=k; o["Quantidade"]=counts[k]; return o; });
       }
 
-      function crossTab(rowKeyFn, colKeyFn, rowLabel){
+      function crossTab(rowKeyFn, colKeyFn, rowLabel, rowFallback){
         var rowKeys = [], colKeys = [], matrix = {};
         data.forEach(function(r){
-          var rk = rowKeyFn(r) || "Não identificado";
+          var rk = rowKeyFn(r) || (rowFallback || "Não identificado");
           var ck = colKeyFn(r);
           if (rowKeys.indexOf(rk) === -1) rowKeys.push(rk);
           if (colKeys.indexOf(ck) === -1) colKeys.push(ck);
@@ -1595,7 +1601,7 @@
         });
       }
 
-      // Pareto de causas: rank (A, B, C...), quantidade, % do total e %
+      // Pareto de motivos: rank (A, B, C...), quantidade, % do total e %
       // acumulado — no mesmo formato do plano de ação usado como referência.
       function letterRank(i){
         var letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -1616,18 +1622,19 @@
           return o;
         });
       }
-      var byCausaSorted = countBy(data, function(r){return r.causa || "Não identificado";}).sort(function(a,b){return b.value-a.value;});
+      var byCausaSorted = countBy(data, function(r){return r.causa || MOTIVO_PENDENTE;}).sort(function(a,b){return b.value-a.value;});
 
-      // Plano de ação: um rascunho agrupado por Causa (ordem de Pareto) x
-      // Célula, pronto para o time preencher Ações/Responsável/Prazo/Status
-      // — o WhatsApp não traz essa parte, então fica em branco de propósito.
+      // Plano de ação: um rascunho agrupado por Motivo do Chamado (ordem de
+      // Pareto) x Célula, pronto para o time preencher Ações/Responsável/
+      // Prazo/Status — o WhatsApp não traz essa parte, então fica em branco
+      // de propósito.
       function planoDeAcaoRows(){
         var causaOrder = {};
         byCausaSorted.forEach(function(d, i){ causaOrder[d.label] = i; });
         var groups = {};
         var groupOrder = [];
         data.forEach(function(r){
-          var causaKey = r.causa || "Não identificado";
+          var causaKey = r.causa || MOTIVO_PENDENTE;
           var localKey = r.local || "Não identificado";
           var gk = causaKey + "|" + localKey;
           if (!groups[gk]){
@@ -1647,7 +1654,7 @@
           var g = groups[gk];
           return {
             "No.": letterRank(causaOrder[g.causa]),
-            "Causa/Descrição da Análise": g.causa,
+            "Motivo do Chamado": g.causa,
             "Processo": g.processo,
             "Célula": g.local,
             "Quantidade": g.qtd,
@@ -1667,20 +1674,20 @@
       var wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Intervenções");
       XLSX.utils.book_append_sheet(wb, sheetFromJson(planoDeAcaoRows()), "Plano de Ação");
-      XLSX.utils.book_append_sheet(wb, sheetFromJson(paretoRows(byCausaSorted, "Causa/Descrição da Análise")), "Pareto Causas");
+      XLSX.utils.book_append_sheet(wb, sheetFromJson(paretoRows(byCausaSorted, "Motivo do Chamado")), "Pareto Motivos");
       XLSX.utils.book_append_sheet(wb, sheetFromJson(aggregate(function(r){return r.ano;}, "Ano")), "Resumo por Ano");
       XLSX.utils.book_append_sheet(wb, sheetFromJson(aggregate(function(r){return r.ano+"-"+("0"+r.mesNum).slice(-2)+" "+r.mes;}, "Ano-Mês")), "Resumo por Mês");
       XLSX.utils.book_append_sheet(wb, sheetFromJson(aggregate(function(r){return r.semanaLabel;}, "Semana")), "Resumo por Semana");
       XLSX.utils.book_append_sheet(wb, sheetFromJson(aggregate(function(r){return r.processo || "Não identificado";}, "Processo")), "Resumo por Processo");
       XLSX.utils.book_append_sheet(wb, sheetFromJson(aggregate(function(r){return r.atividade || "Não identificado";}, "Atividade")), "Resumo por Atividade");
-      XLSX.utils.book_append_sheet(wb, sheetFromJson(aggregate(function(r){return r.causa || "Não identificado";}, "Causa da Falha")), "Resumo por Causa");
+      XLSX.utils.book_append_sheet(wb, sheetFromJson(aggregate(function(r){return r.causa || MOTIVO_PENDENTE;}, "Motivo do Chamado")), "Resumo por Motivo");
       XLSX.utils.book_append_sheet(wb, sheetFromJson(aggregate(function(r){return r.local || "Não identificado";}, "Local")), "Resumo por Local");
       XLSX.utils.book_append_sheet(wb, sheetFromJson(aggregate(function(r){return r.severidade || "Não identificado";}, "Severidade")), "Resumo por Severidade");
       XLSX.utils.book_append_sheet(wb, sheetFromJson(aggregate(function(r){return r.status;}, "Status")), "Resumo por Status");
       XLSX.utils.book_append_sheet(wb, sheetFromJson(crossTab(function(r){return r.processo;}, function(r){return r.mes;}, "Processo")), "Processo x Mês");
       XLSX.utils.book_append_sheet(wb, sheetFromJson(crossTab(function(r){return r.atividade;}, function(r){return r.mes;}, "Atividade")), "Atividade x Mês");
-      XLSX.utils.book_append_sheet(wb, sheetFromJson(crossTab(function(r){return r.causa;}, function(r){return r.mes;}, "Causa da Falha")), "Causa x Mês");
-      XLSX.utils.book_append_sheet(wb, sheetFromJson(crossTab(function(r){return r.causa;}, function(r){return r.local;}, "Causa da Falha")), "Causa x Célula");
+      XLSX.utils.book_append_sheet(wb, sheetFromJson(crossTab(function(r){return r.causa;}, function(r){return r.mes;}, "Motivo do Chamado", MOTIVO_PENDENTE)), "Motivo x Mês");
+      XLSX.utils.book_append_sheet(wb, sheetFromJson(crossTab(function(r){return r.causa;}, function(r){return r.local;}, "Motivo do Chamado", MOTIVO_PENDENTE)), "Motivo x Célula");
 
       var xbuf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
       outZip.file("indicadores_intervencoes.xlsx", xbuf);
