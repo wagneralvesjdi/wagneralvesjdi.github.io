@@ -957,7 +957,11 @@
         var iw = isoWeek(msg.date);
         var proc = classify(text, procRules);
         var atv = classify(text, atvRules);
-        var causa = classify(text, causaRules);
+        // Quando nenhuma palavra-chave bate, o motivo não fica em branco —
+        // usa o próprio texto relatado (truncado) como motivo provisório,
+        // já que é a informação mais importante da linha. Melhor um motivo
+        // "cru" do que nenhum, até alguém agrupar/ajustar depois.
+        var causa = classify(text, causaRules) || truncate(text, 70);
         var local = (cellInfo && cellInfo.code) || classify(text, localRules);
         var sever = classify(text, severidadeRules);
         var status = classifyStatus(text, resolvedWordsOrDefault(resolvidoWords));
