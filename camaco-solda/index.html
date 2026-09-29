@@ -32,7 +32,13 @@
   .panel h2{font-size:15px;margin:0 0 12px;display:flex;align-items:center;gap:8px}
   .step-num{background:var(--primary);color:#fff;width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;flex:none}
   textarea{width:100%;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;border:1px solid var(--border);border-radius:8px;padding:10px;resize:vertical}
-  input[type=text], input[type=file], select{border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;font-family:inherit}
+  input[type=text], input[type=date], input[type=file], select{border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:13px;font-family:inherit}
+  .filters-bar{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:14px;padding:10px 12px;background:var(--chip);border-radius:8px}
+  .filter-field{display:flex;flex-direction:column;gap:4px}
+  .filter-field label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.02em}
+  .filter-field select, .filter-field input{width:100%}
+  @media (max-width:900px){.filters-bar{grid-template-columns:1fr 1fr 1fr}}
+  @media (max-width:600px){.filters-bar{grid-template-columns:1fr 1fr}}
   button{cursor:pointer;border:none;border-radius:8px;padding:9px 16px;font-size:13.5px;font-weight:600}
   button:disabled{opacity:.55;cursor:not-allowed}
   .btn-primary{background:var(--primary);color:#fff}
@@ -137,6 +143,15 @@
     <textarea id="pasteArea" rows="5" placeholder="16/09/2024 14:32 - João: consertei o vazamento na bomba 2 do processo de utilidades"></textarea>
     <p class="footer-note">Grupos com histórico muito grande: o WhatsApp pode limitar quanto tempo/mídia entra no export. Se for o caso, exporte periodicamente (ex: uma vez por mês) — cada exportação continua sendo uma única ação, cobrindo tudo daquele período.</p>
     <p class="footer-note">WhatsApp Web bloqueado na empresa? Depois de gerar o .zip no celular, use o botão de compartilhar do próprio WhatsApp e escolha o <b>Microsoft Teams</b> — mande numa conversa com você mesmo (ou um canal seu) e baixe o arquivo pelo Teams no computador do trabalho. É só um jeito de levar o arquivo até aqui; o processamento continua todo local, nada passa pelo Teams além do arquivo em si.</p>
+    <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
+    <p class="hint">Cada exportação do WhatsApp traz a conversa inteira (mensagens antigas + novas) — o app reconhece as que já foram importadas antes e não duplica. O histórico acumulado fica salvo <b>neste navegador</b>; para não correr risco de perder tudo se limpar os dados do Chrome ou trocar de celular, baixe um backup de vez em quando.</p>
+    <div class="row">
+      <button class="btn-secondary" id="btnBackupData">Baixar backup dos dados</button>
+      <button class="btn-secondary" id="btnRestoreData">Restaurar backup</button>
+      <input type="file" id="restoreFileInput" accept=".json" style="display:none">
+      <button class="btn-secondary" id="btnClearData">Limpar histórico acumulado</button>
+    </div>
+    <div class="hint" id="dataHint" style="margin-top:6px"></div>
   </div>
 
   <div class="panel">
@@ -156,6 +171,11 @@
           <label>Local / Célula / Posto — <code>palavra-chave => Nome do Local</code></label>
           <textarea id="cfgLocais" placeholder="unidade1 => Unidade 1&#10;subestacao => Subestação&#10;linha3 => Linha 3"></textarea>
           <div class="hint">Se a mensagem tiver um código de célula (ex: <b>WR019</b>, <b>WR 037</b>), ele é detectado automaticamente e usado como Local, sem precisar cadastrar regra — essas palavras-chave só valem como reforço/alternativa quando não houver código WR na mensagem. <b>Só entram no indicador as mensagens em que algum posto/célula foi identificado</b> — o resto é ignorado.</div>
+        </div>
+        <div class="cfg-col">
+          <label>Causa da Falha — <code>palavra-chave => Nome da Causa</code></label>
+          <textarea id="cfgCausas"></textarea>
+          <div class="hint">Motivo técnico da parada (ex: Arame enroscado, GAP, Difusor com trinca) — é o que alimenta o Pareto de causas. Vem com uma lista padrão baseada no seu plano de ação; ajuste como preferir.</div>
         </div>
         <div class="cfg-col">
           <label>Severidade — <code>palavra-chave => Nível</code></label>
@@ -191,7 +211,7 @@
     <div class="toolbar">
       <div class="row">
         <label style="font-size:12.5px"><input type="checkbox" id="filterIncluded"> mostrar só incluídas</label>
-        <input type="text" class="search" id="searchBox" placeholder="Buscar por autor, processo, atividade, local ou texto...">
+        <input type="text" class="search" id="searchBox" placeholder="Buscar por autor, processo, atividade, causa, local ou texto...">
       </div>
       <div class="row">
         <button class="btn-secondary" id="btnIncludeAll">Incluir todas visíveis</button>
@@ -206,6 +226,7 @@
         <th style="width:64px">Mídia</th>
         <th style="width:140px">Processo</th>
         <th style="width:140px">Atividade</th>
+        <th style="width:160px">Causa da Falha</th>
         <th style="width:120px">Local / Célula</th>
         <th style="width:100px">Severidade</th>
         <th style="width:100px">Status</th>
@@ -225,6 +246,35 @@
     <div class="row" style="margin-bottom:12px">
       <button class="btn-secondary" id="btnRefreshDash">Atualizar painel com os ajustes da tabela</button>
     </div>
+    <div class="filters-bar" id="filtersBar">
+      <div class="filter-field">
+        <label>De</label>
+        <input type="date" id="fltDataDe">
+      </div>
+      <div class="filter-field">
+        <label>Até</label>
+        <input type="date" id="fltDataAte">
+      </div>
+      <div class="filter-field">
+        <label>Processo</label>
+        <select id="fltProcesso"><option value="">Todos</option></select>
+      </div>
+      <div class="filter-field">
+        <label>Causa</label>
+        <select id="fltCausa"><option value="">Todas</option></select>
+      </div>
+      <div class="filter-field">
+        <label>Posto/Célula</label>
+        <select id="fltLocal"><option value="">Todos</option></select>
+      </div>
+      <div class="filter-field">
+        <label>Status</label>
+        <select id="fltStatus"><option value="">Todos</option><option value="Aberto">Aberto</option><option value="Resolvido">Resolvido</option></select>
+      </div>
+      <div class="filter-field" style="justify-content:flex-end">
+        <button class="btn-secondary" id="btnClearFilters">Limpar filtros</button>
+      </div>
+    </div>
     <div id="dashboardBody"></div>
   </div>
 
@@ -234,7 +284,7 @@
     <button class="btn-primary" id="btnExport">Gerar e baixar pacote (.zip)</button>
     <span class="hint" id="exportProgress"></span>
     <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
-    <p class="hint">Prefere um relatório em <b>PDF</b> (mais leve, sem mídia, aceito por praticamente qualquer filtro de e-mail corporativo)? Gera um resumo com as intervenções incluídas, pronto para compartilhar direto do celular.</p>
+    <p class="hint">Prefere um relatório em <b>PDF</b> (mais leve, sem mídia, aceito por praticamente qualquer filtro de e-mail corporativo)? Gera um resumo com as intervenções incluídas, pronto para compartilhar direto do celular. Respeita os filtros do painel acima (ex: gere um PDF só do período ou da causa que estiver filtrando).</p>
     <button class="btn-secondary" id="btnPrintReport">Gerar relatório em PDF</button>
     <p class="footer-note" id="printHint">
       <b>Android (Chrome):</b> toque em "Gerar relatório em PDF" → no topo, escolha "Salvar como PDF" → Salvar → compartilhe o PDF salvo (e-mail, Teams etc.).<br>
@@ -278,9 +328,6 @@
   ].join("\n");
 
   var DEFAULT_ATIVIDADES = [
-    "arame => Arame",
-    "robo => Falha Robô",
-    "camera => Câmera",
     "triagem => Triagem",
     "analise => Análise",
     "aprovacao => Aprovação",
@@ -292,6 +339,38 @@
     "limpeza => Limpeza",
     "inspecao => Inspeção",
     "reparo => Reparo"
+  ].join("\n");
+
+  // Causa técnica da parada — taxonomia inicial baseada no histórico real de
+  // falhas das células de solda (plano de ação OEE). Editável pelo usuário;
+  // ordem importa (regras mais específicas primeiro evitam classificação
+  // errada quando duas palavras-chave aparecem na mesma mensagem).
+  var DEFAULT_CAUSAS = [
+    "enroscad => Arame enroscado",
+    "guia do arame => Guia do arame fora do especificado",
+    "bico => Bico colado/lixado",
+    "shock => Shock sensor",
+    "componente => Falta de componente",
+    "robo => Falha Robô",
+    "camera => Câmera",
+    "alimentador => Alimentador solto/engate cabo guia/roldanas",
+    "roldana => Alimentador solto/engate cabo guia/roldanas",
+    "cabo guia => Alimentador solto/engate cabo guia/roldanas",
+    "bateria => Perda de eixos/alarme/bateria",
+    "eixo => Perda de eixos/alarme/bateria",
+    "gap => GAP (ajuste de posição)",
+    "fonte de solda => Falha na fonte de solda",
+    "difusor => Difusor com trinca/danificado",
+    "grampo => Grampo com folga",
+    "gun danific => Gun danificada",
+    "antirrespingo => Falta de Antirrespingo",
+    "respingo => Falta de Antirrespingo",
+    "porosidade => Porosidade na mesa (vazamento de ar)",
+    "fresa => Fresa quebrada/sistema não funcionando",
+    "referencia da mesa => Perda de referência da mesa",
+    "tocha => Tocha fora de posição",
+    "miolo => TP miolo danificado",
+    "arame => Arame fora de posição"
   ].join("\n");
 
   var DEFAULT_SEVERIDADES = [
@@ -331,6 +410,7 @@
     return {
       processos: (migrated && migrated.processos) || DEFAULT_PROCESSOS,
       atividades: (migrated && migrated.atividades) || DEFAULT_ATIVIDADES,
+      causas: DEFAULT_CAUSAS,
       locais: "",
       severidades: DEFAULT_SEVERIDADES,
       resolvidos: DEFAULT_RESOLVIDOS,
@@ -361,6 +441,7 @@
   var cfg = loadCfg();
   document.getElementById("cfgProcessos").value = cfg.processos;
   document.getElementById("cfgAtividades").value = cfg.atividades;
+  document.getElementById("cfgCausas").value = cfg.causas || DEFAULT_CAUSAS;
   document.getElementById("cfgLocais").value = cfg.locais || "";
   document.getElementById("cfgSeveridades").value = cfg.severidades;
   document.getElementById("cfgResolvidos").value = cfg.resolvidos;
@@ -370,6 +451,7 @@
     return {
       processos: document.getElementById("cfgProcessos").value,
       atividades: document.getElementById("cfgAtividades").value,
+      causas: document.getElementById("cfgCausas").value,
       locais: document.getElementById("cfgLocais").value,
       severidades: document.getElementById("cfgSeveridades").value,
       resolvidos: document.getElementById("cfgResolvidos").value,
@@ -387,6 +469,7 @@
   document.getElementById("btnResetCfg").addEventListener("click", function(){
     document.getElementById("cfgProcessos").value = DEFAULT_PROCESSOS;
     document.getElementById("cfgAtividades").value = DEFAULT_ATIVIDADES;
+    document.getElementById("cfgCausas").value = DEFAULT_CAUSAS;
     document.getElementById("cfgLocais").value = "";
     document.getElementById("cfgSeveridades").value = DEFAULT_SEVERIDADES;
     document.getElementById("cfgResolvidos").value = DEFAULT_RESOLVIDOS;
@@ -616,6 +699,182 @@
   var pageSize = 100;
   var currentPage = 0;
 
+  // ---- Histórico acumulado (dedup entre importações) ----
+  // O export do WhatsApp sempre traz a conversa inteira (mensagens antigas
+  // + novas). Para não duplicar contagem a cada nova importação, guardamos
+  // no navegador todas as mensagens já vistas (chave = data+hora+autor+
+  // texto original) e, a cada novo arquivo, só as que ainda não existem
+  // entram no histórico. Isso não guarda mídia (só cabe no zip da sessão
+  // atual) — por isso o botão de backup é importante: é a única cópia
+  // fora deste navegador.
+  var LS_DATA_KEY = "wa_interv_data_v1";
+
+  function persistableRow(r){
+    return {
+      key: r.key, date: r.date.toISOString(), dateStr: r.dateStr, time: r.time,
+      author: r.author, text: r.text,
+      ano: r.ano, mes: r.mes, mesNum: r.mesNum,
+      semanaAno: r.semanaAno, semanaNum: r.semanaNum, semanaLabel: r.semanaLabel,
+      processo: r.processo, atividade: r.atividade, causa: r.causa, local: r.local,
+      severidade: r.severidade, status: r.status,
+      mediaFilename: r.mediaFilename, mediaType: r.mediaType, mediaMissing: r.mediaMissing || !!r.mediaFilename,
+      included: r.included
+    };
+  }
+
+  function hydrateRow(pr, id){
+    return {
+      id: id, key: pr.key, date: new Date(pr.date), dateStr: pr.dateStr, time: pr.time,
+      author: pr.author, text: pr.text,
+      ano: pr.ano, mes: pr.mes, mesNum: pr.mesNum,
+      semanaAno: pr.semanaAno, semanaNum: pr.semanaNum, semanaLabel: pr.semanaLabel,
+      processo: pr.processo, atividade: pr.atividade, causa: pr.causa, local: pr.local,
+      severidade: pr.severidade, status: pr.status,
+      mediaFilename: pr.mediaFilename, mediaType: pr.mediaType,
+      mediaZipEntry: null, mediaMissing: true,
+      thumbDataUrl: null,
+      included: pr.included
+    };
+  }
+
+  function loadMasterRows(){
+    var raw = null;
+    try { raw = localStorage.getItem(LS_DATA_KEY); } catch(e){}
+    if (!raw) return [];
+    try {
+      var parsed = JSON.parse(raw);
+      return (parsed.rows || []).map(hydrateRow);
+    } catch(e){ return []; }
+  }
+
+  function saveMasterRows(list){
+    var payload = { version: 1, savedAt: new Date().toISOString(), rows: list.map(persistableRow) };
+    try {
+      localStorage.setItem(LS_DATA_KEY, JSON.stringify(payload));
+      return true;
+    } catch(e){
+      return false;
+    }
+  }
+
+  // Mescla novas linhas no histórico persistido, ignorando qualquer
+  // mensagem cuja chave já exista (mesma data+hora+autor+texto). Uma
+  // mensagem repetida NÃO sobrescreve os ajustes manuais feitos antes
+  // (processo/atividade/causa/local/severidade/status/incluída) — só
+  // aproveita o mediaZipEntry novo se a mídia antiga estava perdida.
+  function mergeIntoMaster(newRows){
+    var master = loadMasterRows();
+    var byKey = {};
+    master.forEach(function(r, i){ byKey[r.key] = i; });
+    var addedCount = 0, dupCount = 0;
+    newRows.forEach(function(r){
+      if (Object.prototype.hasOwnProperty.call(byKey, r.key)){
+        var old = master[byKey[r.key]];
+        if (old.mediaMissing && r.mediaZipEntry){
+          old.mediaZipEntry = r.mediaZipEntry;
+          old.mediaMissing = false;
+        }
+        dupCount++;
+      } else {
+        byKey[r.key] = master.length;
+        master.push(r);
+        addedCount++;
+      }
+    });
+    master.sort(function(a,b){ return a.date - b.date; });
+    master.forEach(function(r, i){ r.id = i; });
+    var saved = saveMasterRows(master);
+    return { rows: master, addedCount: addedCount, dupCount: dupCount, saved: saved };
+  }
+
+  function refreshAllViews(){
+    document.getElementById("previewPanel").style.display = "";
+    document.getElementById("dashboardPanel").style.display = "";
+    document.getElementById("exportPanel").style.display = "";
+    currentPage = 0;
+    renderStats();
+    renderTable();
+    populateFilterOptions();
+    renderDashboard();
+  }
+
+  document.getElementById("btnBackupData").addEventListener("click", function(){
+    var master = loadMasterRows();
+    var dataHint = document.getElementById("dataHint");
+    if (!master.length){
+      dataHint.textContent = "Nenhum dado no histórico ainda.";
+      return;
+    }
+    var payload = { version: 1, exportedAt: new Date().toISOString(), rows: master.map(persistableRow) };
+    var blob = new Blob([JSON.stringify(payload, null, 0)], { type: "application/json" });
+    var ts = new Date();
+    var fname = "backup_indicadores_" + ts.getFullYear() +
+      ("0"+(ts.getMonth()+1)).slice(-2) + ("0"+ts.getDate()).slice(-2) +
+      "_" + ("0"+ts.getHours()).slice(-2) + ("0"+ts.getMinutes()).slice(-2) + ".json";
+    var a = document.createElement("a");
+    var url = URL.createObjectURL(blob);
+    a.href = url; a.download = fname;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    dataHint.textContent = "Backup baixado: " + fname + " (" + master.length + " mensagens). Guarde este arquivo num lugar seguro.";
+  });
+
+  document.getElementById("btnRestoreData").addEventListener("click", function(){
+    document.getElementById("restoreFileInput").click();
+  });
+
+  document.getElementById("restoreFileInput").addEventListener("change", function(e){
+    var f = e.target.files[0];
+    var dataHint = document.getElementById("dataHint");
+    e.target.value = "";
+    if (!f) return;
+    var reader = new FileReader();
+    reader.onload = function(){
+      var parsed;
+      try { parsed = JSON.parse(reader.result); } catch(err){
+        dataHint.textContent = "Arquivo de backup inválido (não é um JSON válido).";
+        return;
+      }
+      if (!parsed || !Array.isArray(parsed.rows)){
+        dataHint.textContent = "Arquivo de backup inválido (formato inesperado).";
+        return;
+      }
+      var restoredRows;
+      try { restoredRows = parsed.rows.map(function(pr, i){ return hydrateRow(pr, i); }); }
+      catch(err){
+        dataHint.textContent = "Arquivo de backup inválido (não foi possível ler as mensagens).";
+        return;
+      }
+      var merge = mergeIntoMaster(restoredRows);
+      rows = merge.rows;
+      refreshAllViews();
+      dataHint.textContent = "Backup restaurado: " + merge.addedCount + " mensagem(ns) nova(s) somada(s) ao histórico" +
+        (merge.dupCount ? " (" + merge.dupCount + " já existiam)" : "") + ". Total: " + rows.length + " mensagens.";
+    };
+    reader.onerror = function(){ dataHint.textContent = "Não foi possível ler o arquivo de backup."; };
+    reader.readAsText(f);
+  });
+
+  document.getElementById("btnClearData").addEventListener("click", function(){
+    var dataHint = document.getElementById("dataHint");
+    if (!confirm("Isso vai apagar TODO o histórico acumulado de intervenções salvo neste navegador. Essa ação não pode ser desfeita (a menos que você tenha um backup). Continuar?")) return;
+    try { localStorage.removeItem(LS_DATA_KEY); } catch(e){}
+    rows = [];
+    document.getElementById("previewPanel").style.display = "none";
+    document.getElementById("dashboardPanel").style.display = "none";
+    document.getElementById("exportPanel").style.display = "none";
+    dataHint.textContent = "Histórico limpo.";
+  });
+
+  // Carrega automaticamente o histórico acumulado salvo neste navegador,
+  // se houver, mesmo sem importar nada nesta visita.
+  (function initFromStorage(){
+    var master = loadMasterRows();
+    if (!master.length) return;
+    rows = master;
+    refreshAllViews();
+    document.getElementById("dataHint").textContent = rows.length + " mensagens no histórico acumulado deste navegador (carregado automaticamente).";
+  })();
+
   document.getElementById("btnProcess").addEventListener("click", function(){
     processInput().catch(function(e){
       document.getElementById("processHint").textContent = "Erro ao processar: " + e.message;
@@ -629,6 +888,7 @@
 
     var procRules = parseRules(cfg.processos);
     var atvRules = parseRules(cfg.atividades);
+    var causaRules = parseRules(cfg.causas);
     var localRules = parseRules(cfg.locais);
     var severidadeRules = parseRules(cfg.severidades);
     var resolvidoWords = parseWords(cfg.resolvidos);
@@ -674,7 +934,7 @@
         return;
       }
 
-      rows = messages.map(function(msg, i){
+      var newRows = messages.map(function(msg, i){
         var media = extractMediaAttachment(msg.text);
         var mediaFilename = null, mediaType = null, mediaZipEntry = null, mediaMissing = false;
         var text = msg.text;
@@ -685,11 +945,13 @@
           mediaZipEntry = mediaIndex[mediaFilename.toLowerCase()] || null;
           mediaMissing = !mediaZipEntry;
         }
+        var dedupKey = msg.dateStr + "|" + msg.time + "|" + msg.author + "|" + msg.text;
         var cellInfo = extractCellCode(text);
         if (cellInfo) text = cellInfo.rest || text;
         var iw = isoWeek(msg.date);
         var proc = classify(text, procRules);
         var atv = classify(text, atvRules);
+        var causa = classify(text, causaRules);
         var local = (cellInfo && cellInfo.code) || classify(text, localRules);
         var sever = classify(text, severidadeRules);
         var status = classifyStatus(text, resolvedWordsOrDefault(resolvidoWords));
@@ -700,6 +962,7 @@
         var included = !!local;
         return {
           id: i,
+          key: dedupKey,
           date: msg.date, dateStr: msg.dateStr, time: msg.time,
           author: msg.author, text: text,
           ano: msg.date.getFullYear(),
@@ -707,7 +970,7 @@
           mesNum: msg.date.getMonth()+1,
           semanaAno: iw.year, semanaNum: iw.week,
           semanaLabel: iw.year + "-S" + (iw.week < 10 ? "0"+iw.week : iw.week),
-          processo: proc, atividade: atv, local: local, severidade: sever, status: status,
+          processo: proc, atividade: atv, causa: causa, local: local, severidade: sever, status: status,
           mediaFilename: mediaFilename, mediaType: mediaType,
           mediaZipEntry: mediaZipEntry, mediaMissing: mediaMissing,
           thumbDataUrl: null,
@@ -715,14 +978,14 @@
         };
       });
 
-      currentPage = 0;
-      document.getElementById("previewPanel").style.display = "";
-      document.getElementById("dashboardPanel").style.display = "";
-      document.getElementById("exportPanel").style.display = "";
-      hint.textContent = "";
-      renderStats();
-      renderTable();
-      renderDashboard();
+      var merge = mergeIntoMaster(newRows);
+      rows = merge.rows;
+
+      refreshAllViews();
+      hint.textContent = merge.addedCount + " mensagem(ns) nova(s) incluída(s)" +
+        (merge.dupCount ? ", " + merge.dupCount + " já estavam no histórico (ignoradas para não duplicar)" : "") +
+        ". Total acumulado: " + rows.length + " mensagens." +
+        (merge.saved ? "" : " ⚠ Não foi possível salvar o histórico neste navegador (armazenamento cheio ou bloqueado) — baixe um backup antes de sair.");
     });
   }
 
@@ -734,7 +997,7 @@
     return rows.filter(function(r){
       if (onlyIncluded && !r.included) return false;
       if (!q) return true;
-      var hay = normalize([r.author, r.processo, r.atividade, r.local, r.severidade, r.text].join(" "));
+      var hay = normalize([r.author, r.processo, r.atividade, r.causa, r.local, r.severidade, r.text].join(" "));
       return hay.indexOf(q) !== -1;
     });
   }
@@ -763,7 +1026,7 @@
 
     var tbody = document.getElementById("tableBody");
     if (!pageRows.length){
-      tbody.innerHTML = '<tr><td colspan="10" class="empty">Nenhuma mensagem encontrada com esse filtro.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="11" class="empty">Nenhuma mensagem encontrada com esse filtro.</td></tr>';
     } else {
       tbody.innerHTML = pageRows.map(function(r){
         return '<tr data-id="'+r.id+'">' +
@@ -773,6 +1036,7 @@
           '<td class="media-cell">'+mediaCellHtml(r)+'</td>' +
           '<td><input type="text" class="in-proc" list="dl-proc" value="'+escapeAttr(r.processo)+'"></td>' +
           '<td><input type="text" class="in-atv" list="dl-atv" value="'+escapeAttr(r.atividade)+'"></td>' +
+          '<td><input type="text" class="in-causa" list="dl-causa" value="'+escapeAttr(r.causa)+'"></td>' +
           '<td><input type="text" class="in-local" list="dl-local" value="'+escapeAttr(r.local)+'"></td>' +
           '<td><input type="text" class="in-sever" list="dl-sever" value="'+escapeAttr(r.severidade)+'"></td>' +
           '<td><select class="in-status"><option '+(r.status==='Aberto'?'selected':'')+'>Aberto</option><option '+(r.status==='Resolvido'?'selected':'')+'>Resolvido</option></select></td>' +
@@ -786,10 +1050,12 @@
 
     var procRules = parseRules(document.getElementById("cfgProcessos").value);
     var atvRules = parseRules(document.getElementById("cfgAtividades").value);
+    var causaRules = parseRules(document.getElementById("cfgCausas").value);
     var localRules = parseRules(document.getElementById("cfgLocais").value);
     var severRules = parseRules(document.getElementById("cfgSeveridades").value);
     ensureDatalist("dl-proc", uniqueVals(procRules));
     ensureDatalist("dl-atv", uniqueVals(atvRules));
+    ensureDatalist("dl-causa", uniqueVals(causaRules));
     ensureDatalist("dl-local", uniqueVals(localRules));
     ensureDatalist("dl-sever", uniqueVals(severRules));
 
@@ -802,6 +1068,8 @@
       if (inProc) inProc.addEventListener("input", function(e){ row.processo = e.target.value; });
       var inAtv = tr.querySelector(".in-atv");
       if (inAtv) inAtv.addEventListener("input", function(e){ row.atividade = e.target.value; });
+      var inCausa = tr.querySelector(".in-causa");
+      if (inCausa) inCausa.addEventListener("input", function(e){ row.causa = e.target.value; });
       var inLocal = tr.querySelector(".in-local");
       if (inLocal) inLocal.addEventListener("input", function(e){ row.local = e.target.value; });
       var inSever = tr.querySelector(".in-sever");
@@ -930,7 +1198,10 @@
   document.getElementById("btnExcludeAll").addEventListener("click", function(){
     visibleRows().forEach(function(r){ r.included = false; }); renderTable();
   });
-  document.getElementById("btnRefreshDash").addEventListener("click", renderDashboard);
+  document.getElementById("btnRefreshDash").addEventListener("click", function(){
+    populateFilterOptions();
+    renderDashboard();
+  });
 
   // ---- Dashboard ----
   var COLOR_BAR = "#2a78d6";
@@ -953,6 +1224,7 @@
   function computeDashboardFrom(data){
     var byProcesso = countBy(data, function(r){return r.processo;}).sort(function(a,b){return b.value-a.value;});
     var byAtividade = countBy(data, function(r){return r.atividade;}).sort(function(a,b){return b.value-a.value;});
+    var byCausa = countBy(data, function(r){return r.causa;}).sort(function(a,b){return b.value-a.value;});
     var byAutor = countBy(data, function(r){return r.author;}).sort(function(a,b){return b.value-a.value;});
     var byLocal = countBy(data, function(r){return r.local;}).sort(function(a,b){return b.value-a.value;});
     var bySemana = countBy(data, function(r){return r.semanaLabel;}).sort(function(a,b){return a.label < b.label ? -1 : 1;});
@@ -962,12 +1234,71 @@
       resolvidas: resolvidas,
       abertas: data.length - resolvidas,
       pctResolvidas: data.length ? (resolvidas/data.length*100) : 0,
-      byProcesso: byProcesso, byAtividade: byAtividade, byAutor: byAutor, byLocal: byLocal, bySemana: bySemana
+      byProcesso: byProcesso, byAtividade: byAtividade, byCausa: byCausa, byAutor: byAutor, byLocal: byLocal, bySemana: bySemana
     };
   }
 
+  function getFilteredRows(){
+    var de = document.getElementById("fltDataDe").value;
+    var ate = document.getElementById("fltDataAte").value;
+    var proc = document.getElementById("fltProcesso").value;
+    var causaSel = document.getElementById("fltCausa").value;
+    var localSel = document.getElementById("fltLocal").value;
+    var statusSel = document.getElementById("fltStatus").value;
+    var deDate = de ? new Date(de + "T00:00:00") : null;
+    var ateDate = ate ? new Date(ate + "T23:59:59") : null;
+    return rows.filter(function(r){
+      if (!r.included) return false;
+      if (deDate && r.date < deDate) return false;
+      if (ateDate && r.date > ateDate) return false;
+      if (proc && (r.processo || "Não identificado") !== proc) return false;
+      if (causaSel && (r.causa || "Não identificado") !== causaSel) return false;
+      if (localSel && (r.local || "Não identificado") !== localSel) return false;
+      if (statusSel && r.status !== statusSel) return false;
+      return true;
+    });
+  }
+
+  function populateSelectOptions(id, values, current){
+    var sel = document.getElementById(id);
+    var placeholder = sel.options[0];
+    sel.innerHTML = "";
+    sel.appendChild(placeholder);
+    values.sort().forEach(function(v){
+      var opt = document.createElement("option");
+      opt.value = v; opt.textContent = v;
+      sel.appendChild(opt);
+    });
+    if (current && values.indexOf(current) !== -1) sel.value = current;
+  }
+
+  function populateFilterOptions(){
+    var included = rows.filter(function(r){ return r.included; });
+    var uniq = function(fn){
+      var set = {};
+      included.forEach(function(r){ set[fn(r) || "Não identificado"] = true; });
+      return Object.keys(set);
+    };
+    populateSelectOptions("fltProcesso", uniq(function(r){return r.processo;}), document.getElementById("fltProcesso").value);
+    populateSelectOptions("fltCausa", uniq(function(r){return r.causa;}), document.getElementById("fltCausa").value);
+    populateSelectOptions("fltLocal", uniq(function(r){return r.local;}), document.getElementById("fltLocal").value);
+  }
+
+  ["fltDataDe","fltDataAte","fltProcesso","fltCausa","fltLocal","fltStatus"].forEach(function(id){
+    document.getElementById(id).addEventListener("change", renderDashboard);
+  });
+  document.getElementById("btnClearFilters").addEventListener("click", function(){
+    document.getElementById("fltDataDe").value = "";
+    document.getElementById("fltDataAte").value = "";
+    document.getElementById("fltProcesso").value = "";
+    document.getElementById("fltCausa").value = "";
+    document.getElementById("fltLocal").value = "";
+    document.getElementById("fltStatus").value = "";
+    renderDashboard();
+  });
+
   function computeDashboard(){
-    return computeDashboardFrom(rows.filter(function(r){ return r.included; }));
+    return computeDashboardFrom(getFilteredRows());
   }
 
   function buildBarChartSVG(items, opts){
@@ -1051,10 +1382,16 @@
     var d = computeDashboard();
     var body = document.getElementById("dashboardBody");
     if (!d.total){
-      body.innerHTML = '<p class="empty">Nenhuma intervenção marcada para incluir ainda.</p>';
+      var anyIncluded = rows.some(function(r){ return r.included; });
+      body.innerHTML = anyIncluded
+        ? '<p class="empty">Nenhuma intervenção encontrada com os filtros atuais. <button class="btn-ghost" id="btnClearFiltersInline" type="button">Limpar filtros</button></p>'
+        : '<p class="empty">Nenhuma intervenção marcada para incluir ainda.</p>';
+      var clearBtn = document.getElementById("btnClearFiltersInline");
+      if (clearBtn) clearBtn.addEventListener("click", function(){ document.getElementById("btnClearFilters").click(); });
       return;
     }
     var topProcessoLabel = d.byProcesso.length ? d.byProcesso[0].label + " (" + d.byProcesso[0].value + ")" : "—";
+    var topCausaLabel = d.byCausa.length ? d.byCausa[0].label + " (" + d.byCausa[0].value + ")" : "—";
     var topAutorLabel = d.byAutor.length ? d.byAutor[0].label + " (" + d.byAutor[0].value + ")" : "—";
     var topLocalLabel = d.byLocal.length ? d.byLocal[0].label + " (" + d.byLocal[0].value + ")" : "—";
 
@@ -1063,6 +1400,7 @@
         '<div class="kpi"><b>'+d.total+'</b><span>Intervenções incluídas</span></div>' +
         '<div class="kpi"><b>'+d.pctResolvidas.toFixed(1)+'%</b><span>Resolvidas</span></div>' +
         '<div class="kpi"><b style="font-size:16px">'+escapeHtml(topProcessoLabel)+'</b><span>Processo mais recorrente</span></div>' +
+        '<div class="kpi"><b style="font-size:16px">'+escapeHtml(topCausaLabel)+'</b><span>Causa mais recorrente</span></div>' +
         '<div class="kpi"><b style="font-size:16px">'+escapeHtml(topAutorLabel)+'</b><span>Técnico mais atuante</span></div>' +
         '<div class="kpi"><b style="font-size:16px">'+escapeHtml(topLocalLabel)+'</b><span>Posto/célula mais afetado</span></div>' +
       '</div>' +
@@ -1072,7 +1410,7 @@
       '</div>' +
       '<div class="charts" style="margin-top:18px">' +
         '<div class="chart-card" style="grid-column:1/-1"><h3>Pareto — Intervenções por Processo</h3>'+buildParetoChartSVG(d.byProcesso, {maxBars:10})+'</div>' +
-        '<div class="chart-card" style="grid-column:1/-1"><h3>Pareto — Motivos de Parada</h3>'+buildParetoChartSVG(d.byAtividade, {maxBars:10})+'</div>' +
+        '<div class="chart-card" style="grid-column:1/-1"><h3>Pareto — Causas de Falha</h3>'+buildParetoChartSVG(d.byCausa, {maxBars:10})+'</div>' +
         '<div class="chart-card"><h3>Intervenções por Posto/Célula</h3>'+buildBarChartSVG(d.byLocal, {maxBars:10})+'</div>' +
         '<div class="chart-card"><h3>Intervenções por Técnico</h3>'+buildBarChartSVG(d.byAutor, {maxBars:8})+'</div>' +
         '<div class="chart-card" style="grid-column:1/-1"><h3>Intervenções por Semana</h3>'+buildBarChartSVG(d.bySemana, {maxBars:20, width:1040})+'</div>' +
@@ -1082,9 +1420,9 @@
 
   // ---- PDF report (browser print) ----
   document.getElementById("btnPrintReport").addEventListener("click", function(){
-    var data = rows.filter(function(r){ return r.included; }).slice().sort(function(a,b){ return a.date - b.date; });
+    var data = getFilteredRows().slice().sort(function(a,b){ return a.date - b.date; });
     if (!data.length){
-      alert("Nenhuma intervenção marcada para incluir. Ajuste os filtros/checkboxes antes de gerar o relatório.");
+      alert("Nenhuma intervenção encontrada com os filtros atuais do painel. Ajuste os filtros antes de gerar o relatório.");
       return;
     }
 
@@ -1093,6 +1431,7 @@
     function fmt(dt){ return ("0"+dt.getDate()).slice(-2)+"/"+("0"+(dt.getMonth()+1)).slice(-2)+"/"+dt.getFullYear(); }
 
     var topProcessoLabel = d.byProcesso.length ? d.byProcesso[0].label + " (" + d.byProcesso[0].value + ")" : "—";
+    var topCausaLabel = d.byCausa.length ? d.byCausa[0].label + " (" + d.byCausa[0].value + ")" : "—";
     var topAutorLabel = d.byAutor.length ? d.byAutor[0].label + " (" + d.byAutor[0].value + ")" : "—";
     var topLocalLabel = d.byLocal.length ? d.byLocal[0].label + " (" + d.byLocal[0].value + ")" : "—";
     var minDate = data[0].date, maxDate = data[data.length-1].date;
@@ -1103,6 +1442,7 @@
         "<td>"+escapeHtml(r.author)+"</td>" +
         "<td>"+escapeHtml(r.processo||"Não identificado")+"</td>" +
         "<td>"+escapeHtml(r.atividade||"Não identificado")+"</td>" +
+        "<td>"+escapeHtml(r.causa||"Não identificado")+"</td>" +
         "<td>"+escapeHtml(r.local||"Não identificado")+"</td>" +
         "<td>"+escapeHtml(r.severidade||"Não identificado")+"</td>" +
         "<td>"+r.status+"</td>" +
@@ -1121,15 +1461,16 @@
       "</div>" +
       "<div class=\"kpis\">" +
         "<div class=\"kpi\" style=\"min-width:220px\"><b style=\"font-size:13px\">"+escapeHtml(topProcessoLabel)+"</b><span>Processo mais recorrente</span></div>" +
+        "<div class=\"kpi\" style=\"min-width:220px\"><b style=\"font-size:13px\">"+escapeHtml(topCausaLabel)+"</b><span>Causa mais recorrente</span></div>" +
         "<div class=\"kpi\" style=\"min-width:220px\"><b style=\"font-size:13px\">"+escapeHtml(topAutorLabel)+"</b><span>Técnico mais atuante</span></div>" +
         "<div class=\"kpi\" style=\"min-width:220px\"><b style=\"font-size:13px\">"+escapeHtml(topLocalLabel)+"</b><span>Posto/célula mais afetado</span></div>" +
       "</div>" +
       "<h2>Pareto — Intervenções por Processo</h2>" + buildParetoChartSVG(d.byProcesso, {maxBars:10}) +
-      "<h2>Pareto — Motivos de Parada</h2>" + buildParetoChartSVG(d.byAtividade, {maxBars:10}) +
+      "<h2>Pareto — Causas de Falha</h2>" + buildParetoChartSVG(d.byCausa, {maxBars:10}) +
       "<h2>Intervenções por Posto/Célula</h2>" + buildBarChartSVG(d.byLocal, {maxBars:10, width:760}) +
       "<h2>Intervenções por Técnico</h2>" + buildBarChartSVG(d.byAutor, {maxBars:8, width:760}) +
       "<h2>Detalhamento ("+d.total+" intervenções)</h2>" +
-      "<table><thead><tr><th>Data</th><th>Autor</th><th>Processo</th><th>Atividade</th><th>Local / Célula</th><th>Severidade</th><th>Status</th><th>Descrição</th></tr></thead><tbody>"+rowsHtml+"</tbody></table>";
+      "<table><thead><tr><th>Data</th><th>Autor</th><th>Processo</th><th>Atividade</th><th>Causa</th><th>Local / Célula</th><th>Severidade</th><th>Status</th><th>Descrição</th></tr></thead><tbody>"+rowsHtml+"</tbody></table>";
 
     setTimeout(function(){ window.print(); }, 50);
   });
@@ -1162,7 +1503,7 @@
     var outZip = new JSZip();
     var mediaFolder = outZip.folder("midias");
 
-    var headerCols = ["Data","Hora","Ano","Mês","Trimestre","Semana (ISO)","Autor","Processo","Atividade","Local/Célula (WR)","Severidade","Status","Mídia","Descrição"];
+    var headerCols = ["Data","Hora","Ano","Mês","Trimestre","Semana (ISO)","Autor","Processo","Atividade","Causa da Falha","Local/Célula (WR)","Severidade","Status","Mídia","Descrição"];
     var mediaColIdx = headerCols.indexOf("Mídia");
     var aoa = [headerCols];
     var mediaCells = [];
@@ -1196,7 +1537,7 @@
           aoa.push([
             fmtDate(r.date), r.time, r.ano, r.mes, "T"+Math.ceil(r.mesNum/3), r.semanaLabel,
             r.author, r.processo || "Não identificado", r.atividade || "Não identificado",
-            r.local || "Não identificado", r.severidade || "Não identificado", r.status,
+            r.causa || "Não identificado", r.local || "Não identificado", r.severidade || "Não identificado", r.status,
             mediaLabel, r.text
           ]);
           if (mediaTarget){
@@ -1222,6 +1563,9 @@
         });
         return { wch: Math.min(50, Math.max(10, maxLen+2)) };
       });
+      // Ativa as setas de filtro do Excel em todas as colunas (filtrar por
+      // data, processo, causa, célula etc. direto na planilha).
+      ws["!autofilter"] = { ref: XLSX.utils.encode_range({ s: {r:0,c:0}, e: {r: aoa.length-1, c: headerCols.length-1} }) };
 
       function aggregate(keyFn, label){
         var counts = {};
@@ -1251,18 +1595,92 @@
         });
       }
 
+      // Pareto de causas: rank (A, B, C...), quantidade, % do total e %
+      // acumulado — no mesmo formato do plano de ação usado como referência.
+      function letterRank(i){
+        var letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        if (i < 26) return letters[i];
+        return letters[Math.floor(i/26)-1] + letters[i%26];
+      }
+      function paretoRows(items, itemLabel){
+        var total = items.reduce(function(s,d){ return s+d.value; }, 0);
+        var cum = 0;
+        return items.map(function(d, i){
+          cum += d.value;
+          var o = {};
+          o["Item"] = letterRank(i);
+          o[itemLabel] = d.label;
+          o["Quantidade"] = d.value;
+          o["% do Total"] = total ? Math.round((d.value/total*1000))/10 : 0;
+          o["% Acumulado"] = total ? Math.round((cum/total*1000))/10 : 0;
+          return o;
+        });
+      }
+      var byCausaSorted = countBy(data, function(r){return r.causa || "Não identificado";}).sort(function(a,b){return b.value-a.value;});
+
+      // Plano de ação: um rascunho agrupado por Causa (ordem de Pareto) x
+      // Célula, pronto para o time preencher Ações/Responsável/Prazo/Status
+      // — o WhatsApp não traz essa parte, então fica em branco de propósito.
+      function planoDeAcaoRows(){
+        var causaOrder = {};
+        byCausaSorted.forEach(function(d, i){ causaOrder[d.label] = i; });
+        var groups = {};
+        var groupOrder = [];
+        data.forEach(function(r){
+          var causaKey = r.causa || "Não identificado";
+          var localKey = r.local || "Não identificado";
+          var gk = causaKey + "|" + localKey;
+          if (!groups[gk]){
+            groups[gk] = { causa: causaKey, local: localKey, processo: r.processo || "Não identificado", qtd: 0, min: r.date, max: r.date };
+            groupOrder.push(gk);
+          }
+          groups[gk].qtd++;
+          if (r.date < groups[gk].min) groups[gk].min = r.date;
+          if (r.date > groups[gk].max) groups[gk].max = r.date;
+        });
+        groupOrder.sort(function(a,b){
+          var oa = causaOrder[groups[a].causa], ob = causaOrder[groups[b].causa];
+          if (oa !== ob) return oa - ob;
+          return groups[b].qtd - groups[a].qtd;
+        });
+        return groupOrder.map(function(gk){
+          var g = groups[gk];
+          return {
+            "No.": letterRank(causaOrder[g.causa]),
+            "Causa/Descrição da Análise": g.causa,
+            "Processo": g.processo,
+            "Célula": g.local,
+            "Quantidade": g.qtd,
+            "Primeira Ocorrência": fmtDate(g.min),
+            "Última Ocorrência": fmtDate(g.max),
+            "Ações para Solução": "",
+            "Responsável": "",
+            "Área": "",
+            "Prazo": "",
+            "Data de Conclusão": "",
+            "Status": "",
+            "Comentários": ""
+          };
+        });
+      }
+
       var wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Intervenções");
+      XLSX.utils.book_append_sheet(wb, sheetFromJson(planoDeAcaoRows()), "Plano de Ação");
+      XLSX.utils.book_append_sheet(wb, sheetFromJson(paretoRows(byCausaSorted, "Causa/Descrição da Análise")), "Pareto Causas");
       XLSX.utils.book_append_sheet(wb, sheetFromJson(aggregate(function(r){return r.ano;}, "Ano")), "Resumo por Ano");
       XLSX.utils.book_append_sheet(wb, sheetFromJson(aggregate(function(r){return r.ano+"-"+("0"+r.mesNum).slice(-2)+" "+r.mes;}, "Ano-Mês")), "Resumo por Mês");
       XLSX.utils.book_append_sheet(wb, sheetFromJson(aggregate(function(r){return r.semanaLabel;}, "Semana")), "Resumo por Semana");
       XLSX.utils.book_append_sheet(wb, sheetFromJson(aggregate(function(r){return r.processo || "Não identificado";}, "Processo")), "Resumo por Processo");
       XLSX.utils.book_append_sheet(wb, sheetFromJson(aggregate(function(r){return r.atividade || "Não identificado";}, "Atividade")), "Resumo por Atividade");
+      XLSX.utils.book_append_sheet(wb, sheetFromJson(aggregate(function(r){return r.causa || "Não identificado";}, "Causa da Falha")), "Resumo por Causa");
       XLSX.utils.book_append_sheet(wb, sheetFromJson(aggregate(function(r){return r.local || "Não identificado";}, "Local")), "Resumo por Local");
       XLSX.utils.book_append_sheet(wb, sheetFromJson(aggregate(function(r){return r.severidade || "Não identificado";}, "Severidade")), "Resumo por Severidade");
       XLSX.utils.book_append_sheet(wb, sheetFromJson(aggregate(function(r){return r.status;}, "Status")), "Resumo por Status");
       XLSX.utils.book_append_sheet(wb, sheetFromJson(crossTab(function(r){return r.processo;}, function(r){return r.mes;}, "Processo")), "Processo x Mês");
       XLSX.utils.book_append_sheet(wb, sheetFromJson(crossTab(function(r){return r.atividade;}, function(r){return r.mes;}, "Atividade")), "Atividade x Mês");
+      XLSX.utils.book_append_sheet(wb, sheetFromJson(crossTab(function(r){return r.causa;}, function(r){return r.mes;}, "Causa da Falha")), "Causa x Mês");
+      XLSX.utils.book_append_sheet(wb, sheetFromJson(crossTab(function(r){return r.causa;}, function(r){return r.local;}, "Causa da Falha")), "Causa x Célula");
 
       var xbuf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
       outZip.file("indicadores_intervencoes.xlsx", xbuf);
