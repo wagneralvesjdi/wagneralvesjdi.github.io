@@ -170,7 +170,7 @@
         <div class="cfg-col">
           <label>Local / Célula / Posto — <code>palavra-chave => Nome do Local</code></label>
           <textarea id="cfgLocais" placeholder="unidade1 => Unidade 1&#10;subestacao => Subestação&#10;linha3 => Linha 3"></textarea>
-          <div class="hint">Se a mensagem tiver um código de célula (ex: <b>WR019</b>, <b>WR 037</b>), ele é detectado automaticamente e usado como Local, sem precisar cadastrar regra — essas palavras-chave só valem como reforço/alternativa quando não houver código WR na mensagem. <b>Só entram no indicador as mensagens em que algum posto/célula foi identificado</b> — o resto é ignorado.</div>
+          <div class="hint">Se a mensagem tiver um código de célula (ex: <b>WR019</b>, <b>WR 037</b>), ele é detectado automaticamente e usado como Local, sem precisar cadastrar regra — essas palavras-chave só valem como reforço/alternativa quando não houver código WR na mensagem. <b>Só entram no indicador as mensagens em que algum posto/célula foi identificado</b> — o resto é ignorado. Dessas, uma mensagem curta, sem número e sem nada de técnico (ex: "Liberada", "Bom dia", "Ok Márcio") já entra <b>desmarcada</b> por padrão, por parecer só conversa que citou o posto — ela continua na tabela, é só marcar de volta se for um apontamento de verdade.</div>
         </div>
         <div class="cfg-col">
           <label>Motivo do Chamado — <code>palavra-chave => Nome do Motivo</code></label>
@@ -795,6 +795,26 @@
     return "Aberto";
   }
 
+  // Palavras que, sozinhas, indicam que a mensagem É sobre um problema
+  // técnico mesmo sem bater em nenhuma palavra-chave específica de causa —
+  // serve de rede de segurança pra não marcar como ruído algo como
+  // "Célula novamente parada" só porque "parada" não está no dicionário
+  // de causas.
+  var PROBLEMA_GENERICO_RE = /\b(falha|parad|quebrad|defeito|erro|travad|problema|reprovad|danific|nao funciona)/;
+
+  // Heurística para separar apontamento real de conversa que só passou
+  // perto de um código de célula (confirmação curta, saudação, pergunta de
+  // status). Nunca é 100% — por isso a linha continua visível e editável
+  // na tabela, só entra desmarcada por padrão quando parece ruído.
+  function isProvavelRuido(text, causaMatch, atvMatch, severMatch){
+    if (causaMatch || atvMatch || severMatch) return false;
+    var norm = normalize(text);
+    if (/[0-9]/.test(norm)) return false;
+    if (PROBLEMA_GENERICO_RE.test(norm)) return false;
+    var words = norm.split(/[^a-z0-9]+/).filter(Boolean);
+    return words.length <= 6;
+  }
+
   // ---- State ----
   var rows = [];
   var pageSize = 100;
@@ -1060,20 +1080,27 @@
         if (cellInfo) text = cellInfo.rest || text;
         var iw = isoWeek(msg.date);
         var proc = classify(text, procRules);
-        var atv = classify(text, atvRules);
+        var atvMatch = classify(text, atvRules);
+        var causaMatch = classify(text, causaRules);
         // Quando nenhuma palavra-chave bate, o motivo não fica em branco —
         // usa o próprio texto relatado (truncado) como motivo provisório,
         // já que é a informação mais importante da linha. Melhor um motivo
         // "cru" do que nenhum, até alguém agrupar/ajustar depois.
-        var causa = classify(text, causaRules) || truncate(text, 70);
+        var atv = atvMatch;
+        var causa = causaMatch || truncate(text, 70);
         var local = (cellInfo && cellInfo.code) || classify(text, localRules);
         var sever = classify(text, severidadeRules);
         var status = classifyStatus(text, resolvedWordsOrDefault(resolvidoWords));
         // Só entra no indicador quando o posto/célula foi identificado
         // (via código WR ou palavra-chave de Local) — mensagem sem
         // posto reconhecido (ex: bom dia, combinados gerais) é ignorada,
-        // mesmo que tenha mídia.
-        var included = !!local;
+        // mesmo que tenha mídia. Além disso, uma mensagem curta, sem
+        // número e sem bater em nenhuma palavra-chave (causa/atividade/
+        // severidade) nem palavra genérica de problema — tipo "Liberada",
+        // "Ok Márcio", "Bom dia" — provavelmente é só conversa que citou o
+        // posto de passagem, não um apontamento de verdade. Continua
+        // visível e editável na tabela, só entra desmarcada por padrão.
+        var included = !!local && !isProvavelRuido(text, causaMatch, atvMatch, sever);
         return {
           id: i,
           key: dedupKey,
@@ -1092,12 +1119,15 @@
         };
       });
 
+      var ruidoCount = newRows.filter(function(r){ return r.local && !r.included; }).length;
+
       var merge = mergeIntoMaster(newRows);
       rows = merge.rows;
 
       refreshAllViews();
       hint.textContent = merge.addedCount + " mensagem(ns) nova(s) incluída(s)" +
         (merge.dupCount ? ", " + merge.dupCount + " já estavam no histórico (ignoradas para não duplicar)" : "") +
+        (ruidoCount ? ", " + ruidoCount + " com posto identificado mas parecendo só conversa (entraram desmarcadas)" : "") +
         ". Total acumulado: " + rows.length + " mensagens." +
         (merge.saved ? "" : " ⚠ Não foi possível salvar o histórico neste navegador (armazenamento cheio ou bloqueado) — baixe um backup antes de sair.");
     });
