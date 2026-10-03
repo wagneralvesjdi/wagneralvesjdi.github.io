@@ -352,6 +352,7 @@
     "shock => Shock sensor",
     "componente => Falta de componente",
     "robo => Falha Robô",
+    "alarme maior => Falha Robô",
     "camera => Câmera",
     "alimentador => Alimentador solto/engate cabo guia/roldanas",
     "roldana => Alimentador solto/engate cabo guia/roldanas",
@@ -360,6 +361,7 @@
     "eixo => Perda de eixos/alarme/bateria",
     "gap => GAP (ajuste de posição)",
     "fonte de solda => Falha na fonte de solda",
+    "maquina de solda => Falha na fonte de solda",
     "difusor => Difusor com trinca/danificado",
     "grampo => Grampo com folga",
     "gun danific => Gun danificada",
@@ -370,7 +372,8 @@
     "referencia da mesa => Perda de referência da mesa",
     "tocha => Tocha fora de posição",
     "miolo => TP miolo danificado",
-    "arame => Arame fora de posição"
+    "arame => Arame fora de posição",
+    "fora de posicao => Pontos fora de posição"
   ].join("\n");
 
   // O motivo do chamado vem direto da mensagem (o que a pessoa relatou);
@@ -674,10 +677,63 @@
 
   var MONTH_NAMES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 
+  // Distância de edição (Levenshtein) — usada para tolerar erros de
+  // digitação/variações de escrita (ex: "dificado" por "danificado") que o
+  // match literal perderia.
+  function levenshtein(a, b){
+    var m = a.length, n = b.length;
+    if (!m) return n;
+    if (!n) return m;
+    var prev = new Array(n+1), curr = new Array(n+1);
+    for (var j=0;j<=n;j++) prev[j] = j;
+    for (var i=1;i<=m;i++){
+      curr[0] = i;
+      for (var j=1;j<=n;j++){
+        var cost = a.charAt(i-1) === b.charAt(j-1) ? 0 : 1;
+        curr[j] = Math.min(prev[j]+1, curr[j-1]+1, prev[j-1]+cost);
+      }
+      var tmp = prev; prev = curr; curr = tmp;
+    }
+    return prev[n];
+  }
+
+  // Tolerância por tamanho da palavra: palavras curtas (<=4) exigem match
+  // exato (evita falso positivo em siglas curtas tipo "gap"/"gun"); palavras
+  // de 5-7 toleram 1 erro; acima disso, até 2 erros.
+  function maxEditDistance(len){
+    if (len <= 4) return 0;
+    if (len <= 7) return 1;
+    return 2;
+  }
+
+  function wordFuzzyMatch(word, target){
+    if (word.indexOf(target) !== -1 || target.indexOf(word) !== -1) return true;
+    var dist = maxEditDistance(target.length);
+    if (!dist) return false;
+    if (Math.abs(word.length - target.length) > dist) return false;
+    return levenshtein(word, target) <= dist;
+  }
+
+  // Uma palavra-chave pode ter mais de uma palavra (ex: "cabo guia") — cada
+  // parte precisa bater (com tolerância) em alguma palavra da mensagem.
+  function fuzzyKeywordMatch(words, kw){
+    var kwParts = kw.split(" ").filter(Boolean);
+    return kwParts.every(function(part){
+      return words.some(function(w){ return wordFuzzyMatch(w, part); });
+    });
+  }
+
   function classify(text, rules){
     var norm = normalize(text);
     for (var i=0;i<rules.length;i++){
       if (norm.indexOf(rules[i].kw) !== -1) return rules[i].val;
+    }
+    // Segunda passada, tolerante a erros de digitação/variações — só roda
+    // se o match literal (rápido, e que respeita a ordem de prioridade das
+    // regras) não encontrou nada.
+    var words = norm.split(/[^a-z0-9]+/).filter(Boolean);
+    for (var i=0;i<rules.length;i++){
+      if (fuzzyKeywordMatch(words, rules[i].kw)) return rules[i].val;
     }
     return "";
   }
