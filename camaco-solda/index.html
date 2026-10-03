@@ -314,6 +314,7 @@
   "use strict";
 
   var DEFAULT_PROCESSOS = [
+    "laser => Laser",
     "atendimento => Atendimento ao Cliente",
     "cadastro => Cadastro",
     "financeiro => Financeiro",
@@ -328,6 +329,9 @@
   ].join("\n");
 
   var DEFAULT_ATIVIDADES = [
+    "tear down => Tear Down (teste)",
+    "jump => Jump/Bypass temporário",
+    "jumper => Jump/Bypass temporário",
     "triagem => Triagem",
     "analise => Análise",
     "aprovacao => Aprovação",
@@ -351,14 +355,27 @@
     "bico => Bico colado/lixado",
     "shock => Shock sensor",
     "componente => Falta de componente",
+    "dress => Fresa quebrada/sistema não funcionando",
+    "estacao de limpeza => Fresa quebrada/sistema não funcionando",
+    "fresa => Fresa quebrada/sistema não funcionando",
     "robo => Falha Robô",
     "alarme maior => Falha Robô",
     "camera => Câmera",
+    "fibra otica => Falha no cabo de fibra ótica (Laser)",
+    "pinca => Pinça desalinhada/com folga",
+    "eletrodo => Eletrodo desgastado/aquecendo (solda a ponto)",
     "alimentador => Alimentador solto/engate cabo guia/roldanas",
     "roldana => Alimentador solto/engate cabo guia/roldanas",
     "cabo guia => Alimentador solto/engate cabo guia/roldanas",
     "bateria => Perda de eixos/alarme/bateria",
     "eixo => Perda de eixos/alarme/bateria",
+    "porta => Falha na porta da célula (fechadura/travamento)",
+    "clp => Falha no CLP",
+    "falta de tela => Falha na tela/IHM",
+    "queda de energia => Queda de energia",
+    "aquec => Superaquecimento",
+    "fuga de corrente => Fuga de corrente elétrica",
+    "shunt => Fuga de corrente elétrica",
     "gap => GAP (ajuste de posição)",
     "fonte de solda => Falha na fonte de solda",
     "maquina de solda => Falha na fonte de solda",
@@ -368,11 +385,11 @@
     "antirrespingo => Falta de Antirrespingo",
     "respingo => Falta de Antirrespingo",
     "porosidade => Porosidade na mesa (vazamento de ar)",
-    "fresa => Fresa quebrada/sistema não funcionando",
     "referencia da mesa => Perda de referência da mesa",
     "tocha => Tocha fora de posição",
     "miolo => TP miolo danificado",
     "arame => Arame fora de posição",
+    "reprovad => Reprova em teste (Tear Down/Macro)",
     "fora de posicao => Pontos fora de posição"
   ].join("\n");
 
@@ -701,13 +718,18 @@
   // exato (evita falso positivo em siglas curtas tipo "gap"/"gun"); palavras
   // de 5-7 toleram 1 erro; acima disso, até 2 erros.
   function maxEditDistance(len){
-    if (len <= 4) return 0;
-    if (len <= 7) return 1;
+    if (len <= 5) return 0;
+    if (len <= 8) return 1;
     return 2;
   }
 
+  // Só distância de edição aqui — SEM atalho por substring. Um atalho
+  // "target contém word" parece inofensivo, mas quebra feio: qualquer
+  // palavrinha comum da mensagem ("a", "com", "de") é, por acaso, prefixo
+  // de alguma palavra-chave maior ("com" ⊂ "componente"), e combinaria
+  // com quase qualquer mensagem. Substring de verdade (plural, gênero,
+  // etc.) já é coberto pela passada literal, que roda antes desta.
   function wordFuzzyMatch(word, target){
-    if (word.indexOf(target) !== -1 || target.indexOf(word) !== -1) return true;
     var dist = maxEditDistance(target.length);
     if (!dist) return false;
     if (Math.abs(word.length - target.length) > dist) return false;
@@ -723,10 +745,27 @@
     });
   }
 
+  // Palavra-chave de uma palavra só precisa começar numa borda de palavra
+  // (sem exigir borda no final, pra continuar pegando plural/conjugação:
+  // "danific" → "danificada"). Sem isso, uma palavra-chave curta pode
+  // bater sem querer no meio de outra palavra qualquer (ex: "arame" está,
+  // por acaso, contido dentro de "parâmetros"). Frase de várias palavras
+  // já é específica o bastante — mantém busca simples.
+  function keywordBoundaryMatch(norm, kw){
+    if (kw.indexOf(" ") !== -1) return norm.indexOf(kw) !== -1;
+    var idx = norm.indexOf(kw);
+    while (idx !== -1){
+      var before = idx === 0 ? "" : norm.charAt(idx-1);
+      if (!/[a-z0-9]/.test(before)) return true;
+      idx = norm.indexOf(kw, idx+1);
+    }
+    return false;
+  }
+
   function classify(text, rules){
     var norm = normalize(text);
     for (var i=0;i<rules.length;i++){
-      if (norm.indexOf(rules[i].kw) !== -1) return rules[i].val;
+      if (keywordBoundaryMatch(norm, rules[i].kw)) return rules[i].val;
     }
     // Segunda passada, tolerante a erros de digitação/variações — só roda
     // se o match literal (rápido, e que respeita a ordem de prioridade das
@@ -996,6 +1035,13 @@
         return;
       }
 
+      // O export do WhatsApp só tem granularidade de minuto — quando a
+      // mesma pessoa manda várias mensagens idênticas (ex: várias fotos
+      // "<Mídia oculta>" seguidas) no mesmo minuto, elas colidiriam na
+      // mesma chave de dedup. Um contador de ocorrência por chave-base
+      // resolve isso sem quebrar a dedup entre reimportações (a mesma
+      // posição relativa se repete, já que o export é sempre cronológico).
+      var dedupSeen = {};
       var newRows = messages.map(function(msg, i){
         var media = extractMediaAttachment(msg.text);
         var mediaFilename = null, mediaType = null, mediaZipEntry = null, mediaMissing = false;
@@ -1007,7 +1053,9 @@
           mediaZipEntry = mediaIndex[mediaFilename.toLowerCase()] || null;
           mediaMissing = !mediaZipEntry;
         }
-        var dedupKey = msg.dateStr + "|" + msg.time + "|" + msg.author + "|" + msg.text;
+        var dedupBaseKey = msg.dateStr + "|" + msg.time + "|" + msg.author + "|" + msg.text;
+        dedupSeen[dedupBaseKey] = (dedupSeen[dedupBaseKey] || 0) + 1;
+        var dedupKey = dedupBaseKey + "#" + dedupSeen[dedupBaseKey];
         var cellInfo = extractCellCode(text);
         if (cellInfo) text = cellInfo.rest || text;
         var iw = isoWeek(msg.date);
