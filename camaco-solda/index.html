@@ -1679,7 +1679,7 @@
 
         return mediaStep.then(function(){
           aoa.push([
-            fmtDate(r.date), r.time, r.ano, r.mes, "T"+Math.ceil(r.mesNum/3), r.semanaLabel,
+            r.date, r.time, r.ano, r.mes, "T"+Math.ceil(r.mesNum/3), r.semanaLabel,
             r.author, r.processo || "Não identificado", r.atividade || "Não identificado",
             r.causa || MOTIVO_PENDENTE, r.local || "Não identificado", r.severidade || "Não identificado", r.status,
             mediaLabel, r.text
@@ -1699,7 +1699,16 @@
         var addr = XLSX.utils.encode_cell({ r: mc.r, c: mc.c });
         if (ws[addr]) ws[addr].l = { Target: mc.target, Tooltip: "Abrir mídia" };
       });
+      // A coluna Data vai como data de verdade (não texto formatado) —
+      // essencial para o Power BI (e o próprio Excel) reconhecerem como
+      // data de verdade: habilita o slicer/linha do tempo por período,
+      // hierarquia de datas e ordenação cronológica nativa.
+      for (var dr=1; dr<aoa.length; dr++){
+        var dateAddr = XLSX.utils.encode_cell({ r: dr, c: 0 });
+        if (ws[dateAddr]) ws[dateAddr].z = "dd/mm/yyyy";
+      }
       ws["!cols"] = headerCols.map(function(h, ci){
+        if (ci === 0) return { wch: 12 };
         var maxLen = h.length;
         aoa.slice(1).forEach(function(row){
           var v = row[ci] == null ? "" : String(row[ci]);
